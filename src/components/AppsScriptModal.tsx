@@ -8,12 +8,14 @@ import {
   FileSpreadsheet,
   FolderOpen,
   Link2,
+  RefreshCw,
   Sparkles,
   X,
 } from 'lucide-react';
 import gasCodeRaw from '../../apps-script/Code.gs?raw';
 import {
   apiSetupSpreadsheet,
+  apiUpgradeDuaKategori,
   getAppsScriptUrl,
   getEnvAppsScriptUrl,
   setAppsScriptUrl,
@@ -35,6 +37,7 @@ export function AppsScriptModal({
   const [urlInput, setUrlInput] = useState('');
   const [isTesting, setIsTesting] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
+  const [isUpgrading, setIsUpgrading] = useState(false);
   const [needsSheetSetup, setNeedsSheetSetup] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [feedback, setFeedback] = useState<{
@@ -139,6 +142,33 @@ export function AppsScriptModal({
     }
   };
 
+  const handleUpgradeTwoCategories = async () => {
+    const clean = urlInput.trim();
+    if (!clean) return;
+    setIsUpgrading(true);
+    setFeedback(null);
+    try {
+      const bootstrap = await apiUpgradeDuaKategori(clean);
+      setAppsScriptUrl(clean);
+      onConnected(bootstrap);
+      setNeedsSheetSetup(false);
+      setFeedback({
+        type: 'success',
+        message: `Struktur 2 Kategori berhasil disinkronkan ke Spreadsheet (${bootstrap.indicators.length} indikator: Kolaborasi & Inovasi Mandiri, ${bootstrap.participants.length} peserta).`,
+      });
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        message:
+          err instanceof Error
+            ? `${err.message} (Pastikan kode Code.gs terbaru sudah di-Deploy ke versi baru melalui Deploy > Manage deployments.)`
+            : 'Gagal menjalankan upgrade 2 kategori.',
+      });
+    } finally {
+      setIsUpgrading(false);
+    }
+  };
+
   const handleCopyCode = async () => {
     try {
       await navigator.clipboard.writeText(gasCodeRaw);
@@ -212,12 +242,42 @@ export function AppsScriptModal({
               </div>
               <button
                 type="submit"
-                disabled={isTesting || isInitializing}
+                disabled={isTesting || isInitializing || isUpgrading}
                 className="px-5 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-[#0C7A89] to-[#07525E] hover:brightness-110 disabled:opacity-60 transition whitespace-nowrap shrink-0"
               >
                 {isTesting ? 'Menguji Koneksi...' : 'Uji & Simpan Koneksi'}
               </button>
             </div>
+            {urlInput.trim().startsWith('https://script.google.com/') && (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={isTesting || isInitializing || isUpgrading}
+                  onClick={() => void handleUpgradeTwoCategories()}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-[#07525E] bg-[#0C7A89]/10 border border-[#0C7A89]/25 hover:bg-[#0C7A89]/20 disabled:opacity-60 transition"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isUpgrading ? 'animate-spin' : ''}`} />
+                  <span>
+                    {isUpgrading
+                      ? 'Meng-upgrade 2 Kategori...'
+                      : 'Upgrade / Sinkronkan 2 Kategori Sekarang'}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isTesting || isInitializing || isUpgrading}
+                  onClick={() => void handleInitializeSheets()}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-[#8A5608] bg-[#D88B15]/12 border border-[#D88B15]/30 hover:bg-[#D88B15]/20 disabled:opacity-60 transition"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>
+                    {isInitializing
+                      ? 'Membuat 7 Sheet...'
+                      : 'Inisialisasi 7 Sheet Otomatis'}
+                  </span>
+                </button>
+              </div>
+            )}
             {envUrl && (
               <p className="text-[11px] text-[#0C7A89] font-medium">
                 Terdeteksi bawaan environment VITE_APPS_SCRIPT_URL: {envUrl}
@@ -247,7 +307,7 @@ export function AppsScriptModal({
                   <div>
                     <button
                       type="button"
-                      disabled={isInitializing}
+                      disabled={isInitializing || isUpgrading}
                       onClick={() => void handleInitializeSheets()}
                       className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-[#D88B15] hover:brightness-105 disabled:opacity-60 transition"
                     >
@@ -336,7 +396,10 @@ export function AppsScriptModal({
                 Buka sheet <span className="font-semibold text-slate-800">Pengaturan</span> dan tempelkan link Folder Google Drive tujuan pada sel <code className="font-mono text-[#07525E]">B2</code>.
               </li>
               <li>
-                Klik <span className="font-semibold text-slate-800">Deploy &gt; New deployment &gt; Web app</span> (<em>Execute as: Me</em>, <em>Who has access: Anyone</em>), lalu tempelkan URL <code className="font-mono">/exec</code> ke kolom di atas.
+                Klik <span className="font-semibold text-slate-800">Deploy &gt; Manage deployments &gt; Edit &gt; New version &gt; Deploy</span> (<em>Execute as: Me</em>, <em>Who has access: Anyone</em>).
+              </li>
+              <li>
+                Jika tombol <em>Run</em> di editor Apps Script menampilkan <em>&ldquo;Terjadi error tak dikenal, coba lagi nanti.&rdquo;</em> (umum terjadi jika Chrome login beberapa akun Google sekaligus), langsung saja <strong>Simpan (Ctrl+S) → Deploy New Version</strong>, lalu klik tombol <strong>Upgrade / Sinkronkan 2 Kategori Sekarang</strong> di modal ini, atau buka Spreadsheet di <strong>jendela Incognito</strong> dengan 1 akun Google saja.
               </li>
             </ol>
           </div>

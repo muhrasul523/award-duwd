@@ -190,6 +190,21 @@ export async function apiSetupSpreadsheet(url: string): Promise<BootstrapRespons
   return normalizeBootstrapPayload(res.bootstrap);
 }
 
+export async function apiUpgradeDuaKategori(url: string): Promise<BootstrapResponse> {
+  const clean = url.trim();
+  if (!clean || !clean.startsWith('https://script.google.com/')) {
+    throw new Error(
+      'URL harus berupa Web App Google Apps Script (dimulai dengan https://script.google.com/...).'
+    );
+  }
+  const res = await callAppsScriptPost<{ bootstrap: BootstrapResponse }>(
+    clean,
+    'upgradeDuaKategori',
+    {}
+  );
+  return normalizeBootstrapPayload(res.bootstrap);
+}
+
 async function tryJsonFetch<T>(
   input: RequestInfo | URL,
   init?: RequestInit

@@ -162,33 +162,32 @@ function getDefaultIndicatorsRows_() {
  */
 function upgradeDuaKategori() {
   var ss = getSpreadsheet_();
+  return runUpgradeDuaKategori_(ss, true);
+}
 
+function runUpgradeDuaKategori_(ss, shouldSyncLeaderboard) {
   // 1. Pastikan header Master_Indikator memiliki kolom awardCategory
-  var indSheet = ensureSheet_(ss, SHEET_NAMES.INDICATORS, [
-    'id',
-    'order',
-    'name',
-    'description',
-    'weight',
-    'awardCategory',
-  ]);
+  var indHeaders = ['id', 'order', 'name', 'description', 'weight', 'awardCategory'];
+  var indSheet = ensureSheet_(ss, SHEET_NAMES.INDICATORS, indHeaders);
   var existingInds = readRecords_(indSheet);
   var hasInovasi = false;
+  var hasKolaborasi = false;
   for (var i = 0; i < existingInds.length; i++) {
-    if (normalizeAwardCategory_(existingInds[i].awardCategory) === 'INOVASI_MANDIRI') {
-      hasInovasi = true;
-      break;
-    }
+    var catCode = String(existingInds[i].awardCategory || '').trim().toUpperCase();
+    if (catCode === 'INOVASI_MANDIRI') hasInovasi = true;
+    if (catCode === 'KOLABORASI') hasKolaborasi = true;
   }
-  if (!hasInovasi) {
+  if (!hasInovasi || !hasKolaborasi || existingInds.length === 0) {
     if (indSheet.getLastRow() > 1) {
-      indSheet.getRange(2, 1, indSheet.getLastRow() - 1, indSheet.getLastColumn()).clearContent();
+      indSheet
+        .getRange(2, 1, indSheet.getLastRow() - 1, Math.max(indHeaders.length, indSheet.getLastColumn()))
+        .clearContent();
     }
-    writeRows_(indSheet, getDefaultIndicatorsRows_());
+    writeRowsAt_(indSheet, 2, getDefaultIndicatorsRows_());
   }
 
-  // 2. Pastikan Peserta_Inovasi memiliki kolom materialsJson (kolom 15) & awardCategory (kolom 16)
-  var pSheet = ensureSheet_(ss, SHEET_NAMES.PARTICIPANTS, [
+  // 2. Pastikan Peserta_Inovasi memiliki kolom materialsJson (15) & awardCategory (16)
+  var pHeaders = [
     'id',
     'entityId',
     'entityType',
@@ -205,24 +204,36 @@ function upgradeDuaKategori() {
     'updatedAt',
     'materialsJson',
     'awardCategory',
-  ]);
+  ];
+  var pSheet = ensureSheet_(ss, SHEET_NAMES.PARTICIPANTS, pHeaders);
+  var pCategoryById = {};
   if (pSheet.getLastRow() > 1) {
-    var pRange = pSheet.getRange(2, 16, pSheet.getLastRow() - 1, 1);
-    var pVals = pRange.getValues();
+    var pRowCount = pSheet.getLastRow() - 1;
+    var pIds = pSheet.getRange(2, 1, pRowCount, 1).getValues();
+    var pCatRange = pSheet.getRange(2, 16, pRowCount, 1);
+    var pCatVals = pCatRange.getValues();
     var pChanged = false;
-    for (var pr = 0; pr < pVals.length; pr++) {
-      if (String(pVals[pr][0] || '').trim() === '') {
-        pVals[pr][0] = 'KOLABORASI';
+    for (var pr = 0; pr < pRowCount; pr++) {
+      var pid = String(pIds[pr][0] || '').trim();
+      var currentCat = String(pCatVals[pr][0] || '').trim();
+      if (!currentCat) {
+        currentCat = 'KOLABORASI';
+        pCatVals[pr][0] = currentCat;
         pChanged = true;
+      } else {
+        currentCat = normalizeAwardCategory_(currentCat);
+      }
+      if (pid) {
+        pCategoryById[pid] = currentCat;
       }
     }
     if (pChanged) {
-      pRange.setValues(pVals);
+      pCatRange.setValues(pCatVals);
     }
   }
 
-  // 3. Pastikan Penilaian_Juri memiliki kolom awardCategory (kolom 13)
-  ensureSheet_(ss, SHEET_NAMES.SCORES, [
+  // 3. Pastikan Penilaian_Juri memiliki kolom awardCategory (13) & migrasi key ind-1..3 -> kol-1..3
+  var sHeaders = [
     'id',
     'participantId',
     'judgeId',
@@ -236,34 +247,79 @@ function upgradeDuaKategori() {
     'notes',
     'updatedAt',
     'awardCategory',
-  ]);
+  ];
+  var sSheet = ensureSheet_(ss, SHEET_NAMES.SCORES, sHeaders);
+  if (sSheet.getLastRow() > 1) {
+    var sRowCount = sSheet.getLastRow() - 1;
+    var sDataRange = sSheet.getRange(2, 1, sRowCount, sHeaders.length);
+    var sVals = sDataRange.getValues();
+    var sChanged = false;
+    for (var sr = 0; sr < sRowCount; sr++) {
+      var sPartId = String(sVals[sr][1] || '').trim();
+      var inferredCat = pCategoryById[sPartId] || 'KOLABORASI';
+      if (String(sVals[sr][12] || '').trim() === '') {
+        sVals[sr][12] = inferredCat;
+        sChanged = true;
+      }
+      var rawJsonStr = String(sVals[sr][5] || '').trim();
+      if (rawJsonStr && rawJsonStr.indexOf('ind-') !== -1) {
+        try {
+          var parsedOld = JSON.parse(rawJsonStr);
+          var prefix = normalizeAwardCategory_(sVals[sr][12]) === 'INOVASI_MANDIRI' ? 'ino-' : 'kol-';
+          if (parsedOld['ind-1'] !== undefined && parsedOld[prefix + '1'] === undefined) {
+            parsedOld[prefix + '1'] = parsedOld['ind-1'];
+            delete parsedOld['ind-1'];
+            sChanged = true;
+          }
+          if (parsedOld['ind-2'] !== undefined && parsedOld[prefix + '2'] === undefined) {
+            parsedOld[prefix + '2'] = parsedOld['ind-2'];
+            delete parsedOld['ind-2'];
+            sChanged = true;
+          }
+          if (parsedOld['ind-3'] !== undefined && parsedOld[prefix + '3'] === undefined) {
+            parsedOld[prefix + '3'] = parsedOld['ind-3'];
+            delete parsedOld['ind-3'];
+            sChanged = true;
+          }
+          sVals[sr][5] = JSON.stringify(parsedOld);
+        } catch (jsonMigErr) {
+          // Abaikan jika bukan JSON valid
+        }
+      }
+    }
+    if (sChanged) {
+      sDataRange.setValues(sVals);
+    }
+  }
 
   // 4. Perbarui header Rekap_Peringkat agar memuat Kategori Award
+  var lbHeaders = [
+    'Peringkat',
+    'Kategori Award',
+    'Jenis',
+    'Entitas',
+    'Provinsi',
+    'Judul Inovasi',
+    'Tipe Bahan',
+    'Tautan Bahan',
+    'Progress Juri',
+    'Nilai Akhir',
+    'Indikator Bobot Tertinggi',
+    'Rata-rata Murni Juri',
+    'Keterangan Tie-Breaker',
+  ];
   var lbSheet = ss.getSheetByName(SHEET_NAMES.LEADERBOARD);
-  if (lbSheet) {
-    var lbHeaders = [
-      'Peringkat',
-      'Kategori Award',
-      'Jenis',
-      'Entitas',
-      'Provinsi',
-      'Judul Inovasi',
-      'Tipe Bahan',
-      'Tautan Bahan',
-      'Progress Juri',
-      'Nilai Akhir',
-      'Indikator Bobot Tertinggi',
-      'Rata-rata Murni Juri',
-      'Keterangan Tie-Breaker',
-    ];
+  if (!lbSheet) {
+    lbSheet = ensureSheet_(ss, SHEET_NAMES.LEADERBOARD, lbHeaders);
+  } else {
     lbSheet.getRange(1, 1, 1, lbHeaders.length).setValues([lbHeaders]);
-    lbSheet
-      .getRange(1, 1, 1, lbHeaders.length)
-      .setBackground('#07525E')
-      .setFontColor('#FFFFFF')
-      .setFontWeight('bold');
+    safeStyleHeader_(lbSheet, lbHeaders.length);
   }
-  syncLeaderboardSheet_(ss);
+
+  if (shouldSyncLeaderboard !== false) {
+    syncLeaderboardSheet_(ss);
+  }
+  return true;
 }
 
 /**
@@ -341,8 +397,13 @@ function setupSpreadsheet() {
     'whatsapp',
   ]);
   if (judgesSheet.getLastRow() <= 1) {
-    judgesSheet.getRange(2, 6, 50, 1).setNumberFormat('@');
-    writeRows_(judgesSheet, [
+    try {
+      var formatRows = Math.max(3, Math.min(50, judgesSheet.getMaxRows() - 1));
+      judgesSheet.getRange(2, 6, formatRows, 1).setNumberFormat('@');
+    } catch (fmtErr) {
+      // Abaikan jika gagal mengatur format teks
+    }
+    writeRowsAt_(judgesSheet, 2, [
       [
         'judge-a',
         'A',
@@ -599,8 +660,21 @@ function setupSpreadsheet() {
     'Keterangan Tie-Breaker',
   ]);
 
-  // Pastikan skema lama ter-upgrade otomatis jika sudah ada sheet sebelumnya
-  upgradeDuaKategori();
+  // Pastikan skema lama ter-upgrade otomatis jika sudah ada data sebelumnya
+  runUpgradeDuaKategori_(ss, true);
+}
+
+function safeStyleHeader_(sheet, colCount) {
+  try {
+    sheet
+      .getRange(1, 1, 1, colCount)
+      .setBackground('#07525E')
+      .setFontColor('#FFFFFF')
+      .setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  } catch (styleErr) {
+    // Abaikan error styling sementara agar eksekusi tetap sukses
+  }
 }
 
 function ensureSheet_(ss, name, headers) {
@@ -609,35 +683,29 @@ function ensureSheet_(ss, name, headers) {
     sheet = ss.insertSheet(name);
   }
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(headers);
-    SpreadsheetApp.flush();
-    var headerRange = sheet.getRange(1, 1, 1, headers.length);
-    headerRange
-      .setBackground('#07525E')
-      .setFontColor('#FFFFFF')
-      .setFontWeight('bold');
-    try {
-      sheet.setFrozenRows(1);
-    } catch (freezeErr) {
-      // Abaikan jika ukuran baris belum siap dibekukan
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    safeStyleHeader_(sheet, headers.length);
+  } else {
+    var currentLastCol = sheet.getLastColumn();
+    if (currentLastCol < headers.length) {
+      var missingCount = headers.length - currentLastCol;
+      var missingHeaders = headers.slice(currentLastCol);
+      sheet.getRange(1, currentLastCol + 1, 1, missingCount).setValues([missingHeaders]);
+      safeStyleHeader_(sheet, headers.length);
     }
-  } else if (sheet.getLastColumn() < headers.length) {
-    for (var col = sheet.getLastColumn() + 1; col <= headers.length; col++) {
-      var cell = sheet.getRange(1, col);
-      cell.setValue(headers[col - 1]);
-      cell.setBackground('#07525E').setFontColor('#FFFFFF').setFontWeight('bold');
-    }
-    SpreadsheetApp.flush();
   }
   return sheet;
 }
 
+function writeRowsAt_(sheet, startRow, rows) {
+  if (!rows || rows.length === 0) return;
+  sheet.getRange(startRow, 1, rows.length, rows[0].length).setValues(rows);
+}
+
 function writeRows_(sheet, rows) {
   if (!rows || rows.length === 0) return;
-  sheet
-    .getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length)
-    .setValues(rows);
-  SpreadsheetApp.flush();
+  var nextRow = Math.max(2, sheet.getLastRow() + 1);
+  sheet.getRange(nextRow, 1, rows.length, rows[0].length).setValues(rows);
 }
 
 function readRecords_(sheet) {
@@ -751,6 +819,15 @@ function buildBootstrapData_(ss) {
         'kol-2': Number(r.ind_2_raw || 0),
         'kol-3': Number(r.ind_3_raw || 0),
       };
+    }
+    if (parsedScores['ind-1'] !== undefined && parsedScores['kol-1'] === undefined) {
+      parsedScores['kol-1'] = parsedScores['ind-1'];
+    }
+    if (parsedScores['ind-2'] !== undefined && parsedScores['kol-2'] === undefined) {
+      parsedScores['kol-2'] = parsedScores['ind-2'];
+    }
+    if (parsedScores['ind-3'] !== undefined && parsedScores['kol-3'] === undefined) {
+      parsedScores['kol-3'] = parsedScores['ind-3'];
     }
     return {
       id: String(r.id),
@@ -1088,22 +1165,27 @@ function syncLeaderboardSheet_(ss) {
  * HTTP GET handler
  */
 function doGet(e) {
+  var lock = null;
   try {
     var ss = getSpreadsheet_();
     var action = (e && e.parameter && e.parameter.action) || 'bootstrap';
-    if (action === 'setupSpreadsheet') {
-      var lock = LockService.getScriptLock();
+    if (action === 'setupSpreadsheet' || action === 'upgradeDuaKategori') {
+      lock = LockService.getScriptLock();
       lock.waitLock(15000);
-      try {
-        setupSpreadsheet();
+      if (action === 'upgradeDuaKategori') {
+        upgradeDuaKategori();
         return jsonOutput_({
           ok: true,
-          message: '7 sheet Spreadsheet berhasil diinisialisasi.',
+          message: 'Spreadsheet berhasil diperbarui ke struktur 2 Kategori.',
           bootstrap: buildBootstrapData_(ss),
         });
-      } finally {
-        lock.releaseLock();
       }
+      setupSpreadsheet();
+      return jsonOutput_({
+        ok: true,
+        message: '7 sheet Spreadsheet berhasil diinisialisasi.',
+        bootstrap: buildBootstrapData_(ss),
+      });
     }
     if (action === 'bootstrap') {
       return jsonOutput_(buildBootstrapData_(ss));
@@ -1111,6 +1193,10 @@ function doGet(e) {
     return jsonOutput_({ ok: true, service: 'Award Kolaborasi & Inovasi Mandiri 2026' });
   } catch (err) {
     return jsonOutput_({ error: err.message || 'Terjadi kesalahan pada Apps Script.' });
+  } finally {
+    if (lock && lock.hasLock()) {
+      lock.releaseLock();
+    }
   }
 }
 
@@ -1119,14 +1205,22 @@ function doGet(e) {
  */
 function doPost(e) {
   var lock = LockService.getScriptLock();
-  lock.waitLock(15000);
   try {
+    lock.waitLock(15000);
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     var action = body.action;
     var ss = getSpreadsheet_();
 
     if (action === 'setupSpreadsheet') {
       setupSpreadsheet();
+      return jsonOutput_({
+        ok: true,
+        bootstrap: buildBootstrapData_(ss),
+      });
+    }
+
+    if (action === 'upgradeDuaKategori') {
+      upgradeDuaKategori();
       return jsonOutput_({
         ok: true,
         bootstrap: buildBootstrapData_(ss),
@@ -1252,17 +1346,21 @@ function doPost(e) {
 
     if (action === 'deleteParticipant') {
       var pSheet3 = ss.getSheetByName(SHEET_NAMES.PARTICIPANTS);
-      var pRows = pSheet3.getDataRange().getValues();
-      for (var d = pRows.length - 1; d >= 1; d--) {
-        if (String(pRows[d][0]) === String(body.id)) {
-          pSheet3.deleteRow(d + 1);
+      if (pSheet3 && pSheet3.getLastRow() > 1) {
+        var pRows = pSheet3.getDataRange().getValues();
+        for (var d = pRows.length - 1; d >= 1; d--) {
+          if (String(pRows[d][0]) === String(body.id)) {
+            pSheet3.deleteRow(d + 1);
+          }
         }
       }
       var sSheet3 = ss.getSheetByName(SHEET_NAMES.SCORES);
-      var sRows = sSheet3.getDataRange().getValues();
-      for (var ds = sRows.length - 1; ds >= 1; ds--) {
-        if (String(sRows[ds][1]) === String(body.id)) {
-          sSheet3.deleteRow(ds + 1);
+      if (sSheet3 && sSheet3.getLastRow() > 1) {
+        var sRows = sSheet3.getDataRange().getValues();
+        for (var ds = sRows.length - 1; ds >= 1; ds--) {
+          if (String(sRows[ds][1]) === String(body.id)) {
+            sSheet3.deleteRow(ds + 1);
+          }
         }
       }
       syncLeaderboardSheet_(ss);
@@ -1401,6 +1499,8 @@ function doPost(e) {
   } catch (err) {
     return jsonOutput_({ error: err.message || 'Terjadi kesalahan pada server Apps Script.' });
   } finally {
-    lock.releaseLock();
+    if (lock.hasLock()) {
+      lock.releaseLock();
+    }
   }
 }
