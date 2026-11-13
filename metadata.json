@@ -1,0 +1,8 @@
+{
+  "name": "Award Kolaborasi dan Inovasi Mandiri 2026",
+  "description": "Portal resmi pengumpulan bahan inovasi, penilaian dewan juri, dan rekapitulasi peringkat real-time Award Kolaborasi dan Inovasi Mandiri 2026 Dewan Pengurus Pusat Wahdah Islamiyah.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
