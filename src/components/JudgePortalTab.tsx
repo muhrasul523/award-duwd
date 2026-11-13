@@ -15,6 +15,7 @@ import {
   computeWeightedScore,
   formatWhatsAppDisplay,
 } from '../shared/scoring';
+import { apiAuthJudge, apiSaveScores } from '../services/api';
 import type {
   BootstrapResponse,
   EntityType,
@@ -134,16 +135,8 @@ export function JudgePortalTab({
     setAuthError(null);
     setIsAuthenticating(true);
     try {
-      const res = await fetch('/api/judges/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ whatsapp: waNumber }),
-      });
-      const json = (await res.json()) as { judge?: MasterJudge; error?: string };
-      if (!res.ok || !json.judge) {
-        throw new Error(json.error || 'Autentikasi gagal.');
-      }
-      onJudgeAuthenticated(json.judge);
+      const judge = await apiAuthJudge(waNumber);
+      onJudgeAuthenticated(judge);
       setWaInput('');
     } catch (err) {
       setAuthError(
@@ -176,24 +169,13 @@ export function JudgePortalTab({
     setIsSaving(true);
     setSaveFeedback(null);
     try {
-      const res = await fetch('/api/scores', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          participantId: selectedParticipant.id,
-          judgeId: activeJudge.id,
-          scores: draftScores,
-          notes: draftNotes,
-        }),
+      const nextBootstrap = await apiSaveScores({
+        participantId: selectedParticipant.id,
+        judgeId: activeJudge.id,
+        scores: draftScores,
+        notes: draftNotes,
       });
-      const json = (await res.json()) as {
-        bootstrap?: BootstrapResponse;
-        error?: string;
-      };
-      if (!res.ok || !json.bootstrap) {
-        throw new Error(json.error || 'Gagal menyimpan penilaian.');
-      }
-      onDataUpdated(json.bootstrap);
+      onDataUpdated(nextBootstrap);
       setSaveFeedback({
         type: 'success',
         message: `Penilaian untuk ${selectedParticipant.entityName} berhasil disimpan (Total Terbobot: ${liveTotalWeighted.toFixed(2)}).`,

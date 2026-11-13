@@ -1,4 +1,4 @@
-import type { AwardDatabase } from './types';
+import type { AwardDatabase } from './types.ts';
 
 export function createSeedDatabase(): AwardDatabase {
   const now = new Date('2026-11-10T09:00:00.000Z').toISOString();

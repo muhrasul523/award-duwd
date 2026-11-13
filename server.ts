@@ -4,15 +4,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
 import multer from 'multer';
-import { createServer as createViteServer } from 'vite';
-import { createSeedDatabase } from './src/shared/seedData';
-import { computeLeaderboard, normalizeWhatsApp } from './src/shared/scoring';
+import { createSeedDatabase } from './src/shared/seedData.ts';
+import { computeLeaderboard, normalizeWhatsApp } from './src/shared/scoring.ts';
 import type {
   AwardDatabase,
   BootstrapResponse,
   MaterialType,
   ParticipantSubmission,
-} from './src/shared/types';
+} from './src/shared/types.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -403,6 +402,7 @@ async function startServer() {
 
   // Vite middleware in dev, static serving in production
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

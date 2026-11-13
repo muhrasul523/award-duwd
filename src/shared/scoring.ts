@@ -6,7 +6,7 @@ import type {
   MasterJudge,
   ParticipantSubmission,
   TieBreakerResolution,
-} from './types';
+} from './types.ts';
 
 export function normalizeWhatsApp(input: string): string {
   const digits = input.replace(/\D/g, '');

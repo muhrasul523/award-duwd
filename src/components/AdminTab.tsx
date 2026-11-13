@@ -13,6 +13,12 @@ import {
   Video,
   X,
 } from 'lucide-react';
+import {
+  apiCreateParticipant,
+  apiDeleteParticipant,
+  apiUpdateParticipant,
+  apiUploadFile,
+} from '../services/api';
 import type {
   BootstrapResponse,
   EntityType,
@@ -115,23 +121,7 @@ export function AdminTab({
     setIsUploading(true);
     setFeedback(null);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-      const json = (await res.json()) as {
-        url?: string;
-        fileName?: string;
-        fileSize?: number;
-        error?: string;
-      };
-
-      if (!res.ok || !json.url) {
-        throw new Error(json.error || 'Gagal mengunggah file.');
-      }
+      const json = await apiUploadFile(file);
 
       setMaterialUrl(json.url);
       setUploadedFileName(json.fileName);
@@ -180,33 +170,21 @@ export function AdminTab({
 
     setIsSubmitting(true);
     try {
-      const endpoint = editingId ? `/api/participants/${editingId}` : '/api/participants';
-      const method = editingId ? 'PUT' : 'POST';
-
-      const res = await fetch(endpoint, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entityId,
-          innovationTitle: innovationTitle.trim(),
-          materialType,
-          materialUrl: materialUrl.trim(),
-          uploadedFileName,
-          uploadedFileSize,
-          notes: notes.trim(),
-        }),
-      });
-
-      const json = (await res.json()) as {
-        bootstrap?: BootstrapResponse;
-        error?: string;
+      const payload = {
+        entityId,
+        innovationTitle: innovationTitle.trim(),
+        materialType,
+        materialUrl: materialUrl.trim(),
+        uploadedFileName,
+        uploadedFileSize,
+        notes: notes.trim(),
       };
 
-      if (!res.ok || !json.bootstrap) {
-        throw new Error(json.error || 'Gagal menyimpan data peserta.');
-      }
+      const nextBootstrap = editingId
+        ? await apiUpdateParticipant(editingId, payload)
+        : await apiCreateParticipant(payload);
 
-      onDataUpdated(json.bootstrap);
+      onDataUpdated(nextBootstrap);
       const actionLabel = editingId ? 'diperbarui' : 'ditambahkan';
       resetForm(entityType);
       setFeedback({
@@ -227,17 +205,8 @@ export function AdminTab({
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/participants/${deleteTarget.id}`, {
-        method: 'DELETE',
-      });
-      const json = (await res.json()) as {
-        bootstrap?: BootstrapResponse;
-        error?: string;
-      };
-      if (!res.ok || !json.bootstrap) {
-        throw new Error(json.error || 'Gagal menghapus data peserta.');
-      }
-      onDataUpdated(json.bootstrap);
+      const nextBootstrap = await apiDeleteParticipant(deleteTarget.id);
+      onDataUpdated(nextBootstrap);
       if (editingId === deleteTarget.id) {
         resetForm(entityType);
       }

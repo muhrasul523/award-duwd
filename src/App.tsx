@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ClipboardList,
+  FileSpreadsheet,
   FileUp,
   RotateCcw,
   ShieldCheck,
@@ -10,10 +11,12 @@ import {
 } from 'lucide-react';
 import emblemImage from './assets/images/wahdah_award_emblem_1794560437624.jpg';
 import { AdminTab } from './components/AdminTab';
+import { AppsScriptModal } from './components/AppsScriptModal';
 import { JudgePortalTab } from './components/JudgePortalTab';
 import { LeaderboardTab } from './components/LeaderboardTab';
 import { MaterialPreviewModal } from './components/MaterialPreviewModal';
 import { ScoreDetailModal } from './components/ScoreDetailModal';
+import { apiBootstrap, apiResetDemo, isUsingAppsScript } from './services/api';
 import type {
   BootstrapResponse,
   LeaderboardEntry,
@@ -41,16 +44,14 @@ export default function App() {
 
   const [showResetModal, setShowResetModal] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [showAppsScriptModal, setShowAppsScriptModal] = useState(false);
+  const [usingGas, setUsingGas] = useState(() => isUsingAppsScript());
 
   const fetchBootstrap = useCallback(async () => {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const res = await fetch('/api/bootstrap');
-      if (!res.ok) {
-        throw new Error('Gagal memuat data aplikasi dari server.');
-      }
-      const json = (await res.json()) as BootstrapResponse;
+      const json = await apiBootstrap();
       setData(json);
 
       // Restore judge session if valid in master judges
@@ -99,12 +100,9 @@ export default function App() {
   const handleConfirmReset = async () => {
     setIsResetting(true);
     try {
-      const res = await fetch('/api/reset-demo', { method: 'POST' });
-      const json = (await res.json()) as { bootstrap?: BootstrapResponse };
-      if (res.ok && json.bootstrap) {
-        setData(json.bootstrap);
-        setShowResetModal(false);
-      }
+      const next = await apiResetDemo();
+      setData(next);
+      setShowResetModal(false);
     } finally {
       setIsResetting(false);
     }
@@ -435,14 +433,29 @@ export default function App() {
         <div>
           Dewan Pengurus Pusat Wahdah Islamiyah · Award Kolaborasi dan Inovasi Mandiri 2026
         </div>
-        <button
-          type="button"
-          onClick={() => setShowResetModal(true)}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-[#07525E] transition"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span>Reset Data Awal</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setShowAppsScriptModal(true)}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0C7A89] hover:text-[#07525E] transition"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            <span>
+              {usingGas
+                ? 'Backend: Google Apps Script (Terhubung)'
+                : 'Koneksi Apps Script & Spreadsheet'}
+            </span>
+          </button>
+          <span aria-hidden="true">·</span>
+          <button
+            type="button"
+            onClick={() => setShowResetModal(true)}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-[#07525E] transition"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Reset Data Awal</span>
+          </button>
+        </div>
       </footer>
 
       {/* Score Breakdown Matrix Modal */}
@@ -462,6 +475,19 @@ export default function App() {
         materialType={previewParticipant?.materialType ?? 'Link'}
         materialUrl={previewParticipant?.materialUrl ?? ''}
         uploadedFileName={previewParticipant?.uploadedFileName}
+      />
+
+      {/* Google Apps Script Backend Connection Modal */}
+      <AppsScriptModal
+        isOpen={showAppsScriptModal}
+        onClose={() => {
+          setShowAppsScriptModal(false);
+          setUsingGas(isUsingAppsScript());
+        }}
+        onConnected={(nextBootstrap) => {
+          setData(nextBootstrap);
+          setUsingGas(isUsingAppsScript());
+        }}
       />
 
       {/* Reset Demo Confirmation Modal */}
