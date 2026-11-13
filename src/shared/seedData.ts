@@ -104,6 +104,20 @@ export function createSeedDatabase(): AwardDatabase {
         innovationTitle: 'Ekosistem Wakaf Produktif & Klinik Pemberdayaan Ummat Terpadu',
         materialType: 'PDF/PPT',
         materialUrl: 'https://wahdah.or.id/award-2026/ekosistem-wakaf-sulsel.pdf',
+        materials: [
+          {
+            id: 'mat-p1-1',
+            type: 'PDF/PPT',
+            title: 'Deck Presentasi Ekosistem Wakaf Sulsel.pdf',
+            url: 'https://wahdah.or.id/award-2026/ekosistem-wakaf-sulsel.pdf',
+          },
+          {
+            id: 'mat-p1-2',
+            type: 'Video',
+            title: 'Video Dokumentasi Klinik Pemberdayaan Ummat',
+            url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          },
+        ],
         notes: 'Menghubungkan 24 DPD kabupaten/kota dalam satu dashboard aset wakaf produktif dan layanan kesehatan gratis.',
         submittedAt: '2026-11-08T08:15:00.000Z',
         updatedAt: now,
@@ -130,6 +144,20 @@ export function createSeedDatabase(): AwardDatabase {
         innovationTitle: 'Hub Kolaborasi Dakwah Digital & Inkubator Ekonomi Pemuda',
         materialType: 'Video',
         materialUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        materials: [
+          {
+            id: 'mat-p3-1',
+            type: 'Video',
+            title: 'Video Profil Inkubator Pemuda DKI Jakarta',
+            url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          },
+          {
+            id: 'mat-p3-2',
+            type: 'Link',
+            title: 'Portal Katalog UMKM Pemuda Wahdah Jakarta',
+            url: 'https://jakarta.wahdah.or.id/inkubator-pemuda',
+          },
+        ],
         notes: 'Inkubasi 120 UMKM binaan dan produksi konten dakwah multi-platform dengan jangkauan nasional.',
         submittedAt: '2026-11-08T13:20:00.000Z',
         updatedAt: now,

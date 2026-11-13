@@ -27,6 +27,16 @@ export interface MasterIndicator {
   weight: number;
 }
 
+export interface MaterialItem {
+  id: string;
+  type: MaterialType;
+  title: string;
+  url: string;
+  driveFileId?: string;
+  uploadedFileName?: string;
+  uploadedFileSize?: number;
+}
+
 export interface ParticipantSubmission {
   id: string;
   entityId: string;
@@ -38,6 +48,7 @@ export interface ParticipantSubmission {
   materialUrl: string;
   uploadedFileName?: string;
   uploadedFileSize?: number;
+  materials?: MaterialItem[];
   notes: string;
   submittedAt: string;
   updatedAt: string;

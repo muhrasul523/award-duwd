@@ -40,7 +40,7 @@ export function ScoreDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#07525E]/40 backdrop-blur-md p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#07525E]/40 backdrop-blur-md p-2.5 sm:p-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -51,7 +51,7 @@ export function ScoreDetailModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-5 border-b border-slate-200/70 bg-gradient-to-r from-[#07525E]/[0.04] via-white/40 to-[#D88B15]/[0.05] flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-200/70 bg-gradient-to-r from-[#07525E]/[0.07] via-[#0C7A89]/[0.04] to-[#D88B15]/[0.07] flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
               <span className="font-bold text-[#D88B15] inline-flex items-center gap-1">
@@ -69,17 +69,17 @@ export function ScoreDetailModal({
             </div>
             <h2
               id="score-modal-title"
-              className="mt-1.5 text-xl font-bold text-[#07525E] leading-snug"
+              className="mt-1.5 text-lg sm:text-xl font-bold text-[#07525E] leading-snug break-words"
             >
               {entry.participant.entityName}
             </h2>
-            <p className="mt-0.5 text-sm font-medium text-slate-600">
+            <p className="mt-0.5 text-xs sm:text-sm font-medium text-slate-600 break-words">
               {entry.participant.innovationTitle}
             </p>
           </div>
 
-          <div className="flex items-center gap-4 shrink-0">
-            <div className="text-right">
+          <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
+            <div className="sm:text-right">
               <div className="text-xs font-medium text-slate-500">Total Nilai Akhir</div>
               <div className="text-2xl font-extrabold text-[#07525E] font-mono tabular-nums">
                 {entry.finalScore.toFixed(2)}
@@ -97,7 +97,7 @@ export function ScoreDetailModal({
         </div>
 
         {/* Body */}
-        <div className="p-6 overflow-y-auto space-y-6">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-5 sm:space-y-6">
           {/* Tie-breaker banner if relevant */}
           {entry.tieBreakerNote && (
             <div className="flex items-start gap-3 px-4 py-3 rounded-2xl bg-[#D88B15]/10 border border-[#D88B15]/25 text-xs text-slate-800">

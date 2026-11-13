@@ -1,9 +1,14 @@
-import { computeLeaderboard, normalizeWhatsApp } from '../shared/scoring.ts';
+import {
+  computeLeaderboard,
+  extractJudgeAccessCode,
+  normalizeWhatsApp,
+} from '../shared/scoring.ts';
 import { createSeedDatabase } from '../shared/seedData.ts';
 import type {
   AwardDatabase,
   BootstrapResponse,
   MasterJudge,
+  MaterialItem,
   MaterialType,
   ParticipantSubmission,
 } from '../shared/types.ts';
@@ -77,6 +82,7 @@ function writeLocalDb(db: AwardDatabase) {
 function buildLocalBootstrap(db: AwardDatabase): BootstrapResponse {
   return {
     ...db,
+    judges: db.judges.map((j) => ({ ...j, whatsapp: '' })),
     leaderboard: computeLeaderboard(
       db.participants,
       db.judges,
@@ -299,6 +305,7 @@ export interface ParticipantPayload {
   driveFileId?: string;
   uploadedFileName?: string;
   uploadedFileSize?: number;
+  materials?: MaterialItem[];
   notes: string;
 }
 
@@ -334,6 +341,22 @@ export async function apiCreateParticipant(
   const entity = db.entities.find((e) => e.id === payload.entityId);
   if (!entity) throw new Error('Entitas DPW/DPD tidak valid.');
   const now = new Date().toISOString();
+  const materials =
+    Array.isArray(payload.materials) && payload.materials.length > 0
+      ? payload.materials
+      : [
+          {
+            id: `mat-${Date.now()}-0`,
+            type: payload.materialType,
+            title: payload.uploadedFileName || `Bahan ${payload.materialType}`,
+            url: payload.materialUrl.trim(),
+            driveFileId: payload.driveFileId,
+            uploadedFileName: payload.uploadedFileName,
+            uploadedFileSize: payload.uploadedFileSize,
+          },
+        ];
+  const primary = materials[0];
+
   const next: ParticipantSubmission = {
     id: `part-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     entityId: entity.id,
@@ -341,10 +364,11 @@ export async function apiCreateParticipant(
     entityName: entity.name,
     province: entity.province,
     innovationTitle: payload.innovationTitle.trim(),
-    materialType: payload.materialType,
-    materialUrl: payload.materialUrl.trim(),
-    uploadedFileName: payload.uploadedFileName,
-    uploadedFileSize: payload.uploadedFileSize,
+    materialType: primary.type,
+    materialUrl: primary.url,
+    uploadedFileName: primary.uploadedFileName,
+    uploadedFileSize: primary.uploadedFileSize,
+    materials,
     notes: payload.notes.trim(),
     submittedAt: now,
     updatedAt: now,
@@ -390,6 +414,22 @@ export async function apiUpdateParticipant(
   if (!entity) throw new Error('Entitas DPW/DPD tidak valid.');
 
   const existing = db.participants[idx];
+  const materials =
+    Array.isArray(payload.materials) && payload.materials.length > 0
+      ? payload.materials
+      : [
+          {
+            id: `mat-${Date.now()}-0`,
+            type: payload.materialType,
+            title: payload.uploadedFileName || `Bahan ${payload.materialType}`,
+            url: payload.materialUrl.trim(),
+            driveFileId: payload.driveFileId,
+            uploadedFileName: payload.uploadedFileName,
+            uploadedFileSize: payload.uploadedFileSize,
+          },
+        ];
+  const primary = materials[0];
+
   db.participants[idx] = {
     ...existing,
     entityId: entity.id,
@@ -397,10 +437,11 @@ export async function apiUpdateParticipant(
     entityName: entity.name,
     province: entity.province,
     innovationTitle: payload.innovationTitle.trim(),
-    materialType: payload.materialType,
-    materialUrl: payload.materialUrl.trim(),
-    uploadedFileName: payload.uploadedFileName ?? existing.uploadedFileName,
-    uploadedFileSize: payload.uploadedFileSize ?? existing.uploadedFileSize,
+    materialType: primary.type,
+    materialUrl: primary.url,
+    uploadedFileName: primary.uploadedFileName,
+    uploadedFileSize: primary.uploadedFileSize,
+    materials,
     notes: payload.notes.trim(),
     updatedAt: new Date().toISOString(),
   };
@@ -437,11 +478,17 @@ export async function apiDeleteParticipant(id: string): Promise<BootstrapRespons
   return buildLocalBootstrap(db);
 }
 
-export async function apiAuthJudge(whatsapp: string): Promise<MasterJudge> {
+export async function apiAuthJudge(accessCode: string): Promise<MasterJudge> {
+  const cleanCode = String(accessCode || '').replace(/\D/g, '');
+  if (cleanCode.length !== 6) {
+    throw new Error('Masukkan tepat 6 angka terakhir dari nomor WhatsApp Anda yang terdaftar.');
+  }
+
   const gasUrl = getAppsScriptUrl();
   if (gasUrl) {
     const res = await callAppsScriptPost<{ judge: MasterJudge }>(gasUrl, 'authJudge', {
-      whatsapp,
+      accessCode: cleanCode,
+      whatsapp: cleanCode,
     });
     return res.judge;
   }
@@ -449,7 +496,7 @@ export async function apiAuthJudge(whatsapp: string): Promise<MasterJudge> {
   const remote = await tryJsonFetch<{ judge: MasterJudge }>('./api/judges/auth', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ whatsapp }),
+    body: JSON.stringify({ accessCode: cleanCode }),
   });
   if (remote.ok) {
     return remote.data.judge;
@@ -458,16 +505,16 @@ export async function apiAuthJudge(whatsapp: string): Promise<MasterJudge> {
     throw new Error(remote.error);
   }
 
-  const normalized = normalizeWhatsApp(whatsapp);
-  if (!normalized || normalized.length < 9) {
-    throw new Error('Masukkan nomor WhatsApp yang valid (contoh: 08114401001).');
-  }
   const db = readLocalDb();
-  const judge = db.judges.find((j) => normalizeWhatsApp(j.whatsapp) === normalized);
+  const judge = db.judges.find(
+    (j) =>
+      extractJudgeAccessCode(j.whatsapp) === cleanCode ||
+      normalizeWhatsApp(j.whatsapp).slice(-6) === cleanCode
+  );
   if (!judge) {
-    throw new Error('Nomor WhatsApp tidak terdaftar dalam Master Dewan Juri Award 2026.');
+    throw new Error('Kode akses tidak cocok dengan Master Dewan Juri Award 2026.');
   }
-  return judge;
+  return { ...judge, whatsapp: '' };
 }
 
 export async function apiSaveScores(payload: {

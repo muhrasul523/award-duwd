@@ -1,19 +1,23 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2,
   ExternalLink,
   Eye,
+  EyeOff,
+  FileText,
   KeyRound,
+  Link2,
+  Loader2,
   LogOut,
-  Phone,
   Save,
   Search,
   ShieldCheck,
+  Video,
 } from 'lucide-react';
 import {
   computeJudgeTotalWeighted,
   computeWeightedScore,
-  formatWhatsAppDisplay,
+  getParticipantMaterials,
 } from '../shared/scoring';
 import { apiAuthJudge, apiSaveScores } from '../services/api';
 import type {
@@ -26,7 +30,6 @@ import type {
 } from '../shared/types';
 
 interface JudgePortalTabProps {
-  judges: MasterJudge[];
   indicators: MasterIndicator[];
   participants: ParticipantSubmission[];
   scores: JudgeScoreRecord[];
@@ -34,11 +37,10 @@ interface JudgePortalTabProps {
   onJudgeAuthenticated: (judge: MasterJudge) => void;
   onJudgeLogout: () => void;
   onDataUpdated: (data: BootstrapResponse) => void;
-  onPreviewMaterial: (participant: ParticipantSubmission) => void;
+  onPreviewMaterial: (participant: ParticipantSubmission, initialMaterialId?: string) => void;
 }
 
 export function JudgePortalTab({
-  judges,
   indicators,
   participants,
   scores,
@@ -48,7 +50,8 @@ export function JudgePortalTab({
   onDataUpdated,
   onPreviewMaterial,
 }: JudgePortalTabProps) {
-  const [waInput, setWaInput] = useState('');
+  const [accessCodeInput, setAccessCodeInput] = useState('');
+  const [showCode, setShowCode] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
@@ -66,6 +69,8 @@ export function JudgePortalTab({
     type: 'success' | 'error';
     message: string;
   } | null>(null);
+
+  const scoringSectionRef = useRef<HTMLElement | null>(null);
 
   const sortedIndicators = useMemo(
     () => [...indicators].sort((a, b) => a.order - b.order),
@@ -113,6 +118,11 @@ export function JudgePortalTab({
     [participants, selectedParticipantId]
   );
 
+  const selectedMaterials = useMemo(
+    () => (selectedParticipant ? getParticipantMaterials(selectedParticipant) : []),
+    [selectedParticipant]
+  );
+
   // Load saved scores or initialize defaults when selected participant or activeJudge changes
   useEffect(() => {
     if (!activeJudge || !selectedParticipant) return;
@@ -131,16 +141,21 @@ export function JudgePortalTab({
     [draftScores, sortedIndicators]
   );
 
-  const performWhatsAppAuth = async (waNumber: string) => {
+  const performAccessCodeAuth = async (code: string) => {
     setAuthError(null);
+    const clean = code.replace(/\D/g, '');
+    if (clean.length !== 6) {
+      setAuthError('Masukkan tepat 6 angka terakhir dari nomor WhatsApp Anda yang terdaftar.');
+      return;
+    }
     setIsAuthenticating(true);
     try {
-      const judge = await apiAuthJudge(waNumber);
+      const judge = await apiAuthJudge(clean);
       onJudgeAuthenticated(judge);
-      setWaInput('');
+      setAccessCodeInput('');
     } catch (err) {
       setAuthError(
-        err instanceof Error ? err.message : 'Gagal mencocokkan nomor WhatsApp.'
+        err instanceof Error ? err.message : 'Kode akses juri tidak valid.'
       );
     } finally {
       setIsAuthenticating(false);
@@ -149,7 +164,14 @@ export function JudgePortalTab({
 
   const handleAuthSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    void performWhatsAppAuth(waInput);
+    void performAccessCodeAuth(accessCodeInput);
+  };
+
+  const handleSelectParticipant = (id: string) => {
+    setSelectedParticipantId(id);
+    if (window.innerWidth < 1024 && scoringSectionRef.current) {
+      scoringSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   const handleScoreInputChange = (indicatorId: string, rawStr: string) => {
@@ -190,21 +212,21 @@ export function JudgePortalTab({
     }
   };
 
-  // Unauthenticated View: WhatsApp Login Card
+  // Unauthenticated View: 6-Digit Access Code Login Card (Zero Phone Numbers Shown)
   if (!activeJudge) {
     return (
-      <div className="max-w-2xl mx-auto space-y-6">
-        <div className="glass-panel rounded-3xl p-7 sm:p-9">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#0C7A89] to-[#07525E] text-white flex items-center justify-center shadow-sm">
-              <ShieldCheck className="w-5 h-5" />
+      <div className="max-w-xl mx-auto">
+        <div className="glass-panel rounded-3xl p-6 sm:p-9 bg-gradient-to-br from-white/95 via-[#F4FAFB]/90 to-[#FDF7EC]/85">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#0C7A89] via-[#096472] to-[#07525E] text-white flex items-center justify-center shadow-sm shrink-0">
+              <ShieldCheck className="w-6 h-6" />
             </div>
-            <div>
-              <h2 className="text-xl font-bold text-[#07525E]">
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold text-[#07525E]">
                 Autentikasi Portal Dewan Juri
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Masukkan nomor WhatsApp resmi yang terdaftar pada Master Dewan Juri DPP Wahdah Islamiyah.
+              <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
+                Dewan Pimpinan Pusat Wahdah Islamiyah · Masukkan 6 angka terakhir nomor WhatsApp resmi Anda yang terdaftar.
               </p>
             </div>
           </div>
@@ -212,22 +234,40 @@ export function JudgePortalTab({
           <form onSubmit={handleAuthSubmit} className="mt-6 space-y-4">
             <div>
               <label
-                htmlFor="judge-wa-input"
+                htmlFor="judge-code-input"
                 className="block text-xs font-semibold text-slate-700 mb-2"
               >
-                Nomor WhatsApp Juri
+                Kode Akses Dewan Juri (6 Digit Terakhir Nomor WA)
               </label>
               <div className="relative">
-                <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <KeyRound className="w-4 h-4 text-[#0C7A89] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
-                  id="judge-wa-input"
-                  type="tel"
-                  value={waInput}
-                  onChange={(e) => setWaInput(e.target.value)}
-                  placeholder="Contoh: 08114401001 atau +628114401001"
-                  className="w-full rounded-xl bg-white/95 border border-slate-200 pl-10 pr-4 py-3 text-sm font-mono text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition"
+                  id="judge-code-input"
+                  type={showCode ? 'text' : 'password'}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={accessCodeInput}
+                  onChange={(e) => {
+                    const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 6);
+                    setAccessCodeInput(digitsOnly);
+                    if (authError) setAuthError(null);
+                  }}
+                  placeholder="Masukkan 6 angka terakhir"
+                  className="w-full rounded-xl bg-white/95 border border-slate-200 pl-10 pr-11 py-3 text-base font-mono tracking-[0.22em] text-slate-900 placeholder:font-sans placeholder:tracking-normal placeholder:text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowCode((prev) => !prev)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                  aria-label={showCode ? 'Sembunyikan kode akses' : 'Tampilkan kode akses'}
+                >
+                  {showCode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
+              <p className="mt-1.5 text-[11px] text-slate-500">
+                Untuk menjaga kerahasiaan data juri, sistem hanya memverifikasi 6 digit akhir secara tertutup.
+              </p>
             </div>
 
             {authError && (
@@ -242,39 +282,18 @@ export function JudgePortalTab({
             <button
               type="submit"
               disabled={isAuthenticating}
-              className="w-full inline-flex items-center justify-center gap-2 py-3 px-5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-[#0C7A89] to-[#07525E] hover:brightness-110 disabled:opacity-60 transition shadow-sm"
+              className="w-full inline-flex items-center justify-center gap-2 py-3 px-5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-[#0C7A89] via-[#096472] to-[#07525E] hover:brightness-110 disabled:opacity-60 transition shadow-sm"
             >
-              <KeyRound className="w-4 h-4" />
-              <span>{isAuthenticating ? 'Memverifikasi...' : 'Masuk ke Ruang Penilaian'}</span>
+              {isAuthenticating ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <KeyRound className="w-4 h-4" />
+              )}
+              <span>
+                {isAuthenticating ? 'Memverifikasi Kode Akses...' : 'Masuk ke Ruang Penilaian'}
+              </span>
             </button>
           </form>
-
-          {/* Master Judges Quick Reference */}
-          <div className="mt-7 pt-6 border-t border-slate-200/70">
-            <h3 className="text-xs font-semibold text-slate-500">
-              Direktori Master Dewan Juri (Klik untuk Masuk Cepat)
-            </h3>
-            <div className="mt-3 divide-y divide-slate-200/60 rounded-2xl border border-slate-200/80 bg-white/75 overflow-hidden">
-              {judges.map((j) => (
-                <button
-                  key={j.id}
-                  type="button"
-                  onClick={() => void performWhatsAppAuth(j.whatsapp)}
-                  className="w-full px-4 py-3 text-left hover:bg-[#0C7A89]/[0.06] transition flex items-center justify-between gap-4"
-                >
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-[#07525E]">
-                      {j.label} · {j.name}
-                    </div>
-                    <div className="text-[11px] text-slate-500 truncate mt-0.5">{j.title}</div>
-                  </div>
-                  <span className="font-mono tabular-nums text-xs font-semibold text-[#0C7A89] shrink-0">
-                    {formatWhatsAppDisplay(j.whatsapp)}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
     );
@@ -284,40 +303,41 @@ export function JudgePortalTab({
   const scoredByActiveCount = participants.filter((p) => judgeScoreMap.has(p.id)).length;
 
   return (
-    <div className="space-y-6">
-      {/* Active Judge Session Header */}
-      <div className="glass-panel rounded-2xl px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-5 sm:space-y-6">
+      {/* Active Judge Session Header (NO phone number displayed) */}
+      <div className="glass-panel rounded-2xl px-4 sm:px-5 py-4 bg-gradient-to-r from-white/90 via-[#F4FAFB]/85 to-[#FDF7EC]/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-medium text-slate-500">
             <span className="font-bold text-[#0C7A89]">{activeJudge.label}</span>
-            <span aria-hidden="true">·</span>
-            <span className="font-mono tabular-nums">
-              WA {formatWhatsAppDisplay(activeJudge.whatsapp)}
-            </span>
             <span aria-hidden="true">·</span>
             <span className="text-[#D88B15] font-semibold tabular-nums">
               {scoredByActiveCount} / {participants.length} Peserta Dinilai
             </span>
           </div>
-          <div className="text-base font-bold text-[#07525E] mt-0.5 truncate">
+          <div className="text-sm sm:text-base font-bold text-[#07525E] mt-0.5 break-words">
             {activeJudge.name}
           </div>
+          {activeJudge.title && (
+            <div className="text-[11px] text-slate-500 mt-0.5 break-words">
+              {activeJudge.title}
+            </div>
+          )}
         </div>
 
         <button
           type="button"
           onClick={onJudgeLogout}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition self-start sm:self-auto whitespace-nowrap shrink-0"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition self-start sm:self-auto whitespace-nowrap shrink-0"
         >
           <LogOut className="w-3.5 h-3.5" />
-          <span>Ganti / Keluar Juri</span>
+          <span>Keluar / Ganti Juri</span>
         </button>
       </div>
 
       {/* Main Split Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 items-start">
         {/* Left Column: Participant Selector */}
-        <aside className="lg:col-span-4 glass-panel rounded-3xl p-5 space-y-4">
+        <aside className="lg:col-span-4 glass-panel rounded-3xl p-4 sm:p-5 space-y-4">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-bold text-[#07525E]">Daftar Peserta</h2>
             <span className="text-xs font-mono tabular-nums text-slate-500">
@@ -332,11 +352,11 @@ export function JudgePortalTab({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Cari wilayah atau inovasi..."
-              className="w-full rounded-xl bg-white/90 border border-slate-200 pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition"
+              className="w-full rounded-xl bg-white/95 border border-slate-200 pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition"
             />
           </div>
 
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="inline-flex p-0.5 rounded-lg bg-slate-900/[0.05] text-[11px] font-semibold">
               {(['ALL', 'UNSCORED', 'SCORED'] as const).map((st) => (
                 <button
@@ -345,7 +365,7 @@ export function JudgePortalTab({
                   onClick={() => setStatusFilter(st)}
                   className={`px-2.5 py-1 rounded-md transition whitespace-nowrap ${
                     statusFilter === st
-                      ? 'bg-white text-[#07525E] shadow-sm'
+                      ? 'bg-gradient-to-r from-[#0C7A89] to-[#07525E] text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -362,7 +382,7 @@ export function JudgePortalTab({
                   onClick={() => setEntityFilter(et)}
                   className={`px-2 py-1 rounded-md transition whitespace-nowrap ${
                     entityFilter === et
-                      ? 'bg-white text-[#07525E] shadow-sm'
+                      ? 'bg-white text-[#07525E] shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -372,7 +392,7 @@ export function JudgePortalTab({
             </div>
           </div>
 
-          <div className="space-y-2 max-h-[540px] overflow-y-auto pr-1">
+          <div className="space-y-2 max-h-[340px] lg:max-h-[540px] overflow-y-auto pr-1">
             {filteredParticipants.length === 0 ? (
               <div className="p-6 text-center text-xs text-slate-500 rounded-2xl bg-white/60 border border-slate-200/70">
                 Tidak ada peserta pada filter ini.
@@ -389,27 +409,29 @@ export function JudgePortalTab({
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => setSelectedParticipantId(p.id)}
+                    onClick={() => handleSelectParticipant(p.id)}
                     className={`w-full text-left rounded-2xl p-3.5 border transition ${
                       isSelected
-                        ? 'bg-gradient-to-r from-[#0C7A89]/10 to-[#07525E]/5 border-[#0C7A89] shadow-sm'
-                        : 'bg-white/80 border-slate-200/80 hover:border-[#0C7A89]/40'
+                        ? 'bg-gradient-to-r from-[#0C7A89]/14 via-[#0C7A89]/6 to-[#D88B15]/8 border-[#0C7A89] shadow-sm'
+                        : 'bg-white/85 border-slate-200/80 hover:border-[#0C7A89]/40'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2 text-[11px] font-medium">
-                      <span className="text-[#0C7A89] font-bold">
+                      <span className="text-[#0C7A89] font-bold truncate">
                         {p.entityType} · {p.province}
                       </span>
                       {savedTotal !== null ? (
-                        <span className="inline-flex items-center gap-1 font-mono tabular-nums font-bold text-[#07525E]">
+                        <span className="inline-flex items-center gap-1 font-mono tabular-nums font-bold text-[#07525E] shrink-0">
                           <CheckCircle2 className="w-3.5 h-3.5 text-[#0C7A89]" />
                           {savedTotal.toFixed(2)}
                         </span>
                       ) : (
-                        <span className="text-[#D88B15] font-semibold">Belum Dinilai</span>
+                        <span className="text-[#D88B15] font-semibold shrink-0">
+                          Belum Dinilai
+                        </span>
                       )}
                     </div>
-                    <div className="mt-1 text-xs font-bold text-slate-900 leading-snug">
+                    <div className="mt-1 text-xs font-bold text-slate-900 leading-snug break-words">
                       {p.entityName}
                     </div>
                     <div className="mt-0.5 text-[11px] text-slate-500 line-clamp-1">
@@ -423,7 +445,10 @@ export function JudgePortalTab({
         </aside>
 
         {/* Right Column: Evaluation Workspace */}
-        <section className="lg:col-span-8 glass-panel rounded-3xl p-6 sm:p-7">
+        <section
+          ref={scoringSectionRef}
+          className="lg:col-span-8 glass-panel rounded-3xl p-4 sm:p-7"
+        >
           {!selectedParticipant ? (
             <div className="py-16 text-center">
               <p className="text-sm font-semibold text-slate-700">
@@ -432,57 +457,99 @@ export function JudgePortalTab({
             </div>
           ) : (
             <form onSubmit={handleSaveScores} className="space-y-6">
-              {/* Participant Header & Material Button */}
-              <div className="pb-5 border-b border-slate-200/70 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 font-medium">
-                    <span className="font-bold text-[#0C7A89]">
-                      {selectedParticipant.entityType}
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <span>{selectedParticipant.province}</span>
-                    <span aria-hidden="true">·</span>
-                    <span className="font-semibold text-[#D88B15]">
-                      Bahan: {selectedParticipant.materialType}
-                    </span>
-                  </div>
-                  <h2 className="mt-1 text-xl font-bold text-[#07525E]">
-                    {selectedParticipant.entityName}
-                  </h2>
-                  <p className="mt-0.5 text-sm font-semibold text-slate-800">
-                    {selectedParticipant.innovationTitle}
-                  </p>
-                  {selectedParticipant.notes && (
-                    <p className="mt-2 text-xs text-slate-600 leading-relaxed">
-                      {selectedParticipant.notes}
+              {/* Participant Header & Multi-Material Section */}
+              <div className="pb-5 border-b border-slate-200/70 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 font-medium">
+                      <span className="font-bold text-[#0C7A89]">
+                        {selectedParticipant.entityType}
+                      </span>
+                      <span aria-hidden="true">·</span>
+                      <span>{selectedParticipant.province}</span>
+                      <span aria-hidden="true">·</span>
+                      <span className="font-semibold text-[#D88B15]">
+                        {selectedMaterials.length} Bahan Lampiran
+                      </span>
+                    </div>
+                    <h2 className="mt-1 text-lg sm:text-xl font-bold text-[#07525E] break-words">
+                      {selectedParticipant.entityName}
+                    </h2>
+                    <p className="mt-0.5 text-xs sm:text-sm font-semibold text-slate-800 break-words">
+                      {selectedParticipant.innovationTitle}
                     </p>
+                    {selectedParticipant.notes && (
+                      <p className="mt-2 text-xs text-slate-600 leading-relaxed break-words">
+                        {selectedParticipant.notes}
+                      </p>
+                    )}
+                  </div>
+
+                  {selectedMaterials.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => onPreviewMaterial(selectedParticipant)}
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-[#0C7A89] to-[#07525E] hover:brightness-110 transition whitespace-nowrap shrink-0 self-start"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Pratinjau Bahan ({selectedMaterials.length})</span>
+                    </button>
                   )}
                 </div>
 
-                <div className="flex flex-wrap sm:flex-col items-stretch sm:items-end gap-2 shrink-0">
-                  <a
-                    href={selectedParticipant.materialUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-[#0C7A89] to-[#07525E] hover:brightness-110 transition whitespace-nowrap"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span>Buka Bahan</span>
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => onPreviewMaterial(selectedParticipant)}
-                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-[#07525E] bg-[#0C7A89]/10 hover:bg-[#0C7A89]/20 transition whitespace-nowrap"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>Pratinjau</span>
-                  </button>
-                </div>
+                {/* All Attached Materials List */}
+                {selectedMaterials.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {selectedMaterials.map((mat, idx) => (
+                      <div
+                        key={mat.id}
+                        className="rounded-xl border border-slate-200/80 bg-white/85 px-3 py-2.5 flex items-center justify-between gap-2.5"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#0C7A89]/15 to-[#07525E]/10 text-[#07525E] flex items-center justify-center shrink-0">
+                            {mat.type === 'PDF/PPT' && <FileText className="w-3.5 h-3.5" />}
+                            {mat.type === 'Video' && <Video className="w-3.5 h-3.5" />}
+                            {mat.type === 'Link' && <Link2 className="w-3.5 h-3.5" />}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold text-slate-900 truncate">
+                              {idx + 1}. {mat.title}
+                            </div>
+                            <div className="text-[11px] text-[#0C7A89] font-medium">
+                              {mat.type}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => onPreviewMaterial(selectedParticipant, mat.id)}
+                            className="p-1.5 rounded-lg text-[#07525E] hover:bg-[#0C7A89]/10 transition"
+                            title={`Pratinjau ${mat.title}`}
+                            aria-label={`Pratinjau ${mat.title}`}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <a
+                            href={mat.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 rounded-lg text-[#0C7A89] hover:bg-[#0C7A89]/10 transition"
+                            title={`Buka tautan ${mat.title}`}
+                            aria-label={`Buka tautan ${mat.title}`}
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Indicators Scoring Form */}
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                   <h3 className="text-sm font-bold text-[#07525E]">
                     Input Nilai Murni Indikator (Skala 0 – 100)
                   </h3>
@@ -498,10 +565,10 @@ export function JudgePortalTab({
                   return (
                     <div
                       key={ind.id}
-                      className="rounded-2xl border border-slate-200/80 bg-white/85 p-5 space-y-3.5"
+                      className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white/95 via-white/90 to-[#F5FAFB]/90 p-4 sm:p-5 space-y-3.5"
                     >
-                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                        <div>
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1.5">
+                        <div className="min-w-0">
                           <div className="text-sm font-bold text-slate-900">
                             {ind.order}. {ind.name}
                           </div>
@@ -514,8 +581,8 @@ export function JudgePortalTab({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center pt-1">
-                        <div className="sm:col-span-6">
+                      <div className="grid grid-cols-2 sm:grid-cols-12 gap-3 sm:gap-4 items-center pt-1">
+                        <div className="col-span-2 sm:col-span-6">
                           <input
                             type="range"
                             min={0}
@@ -535,7 +602,7 @@ export function JudgePortalTab({
                           </div>
                         </div>
 
-                        <div className="sm:col-span-3">
+                        <div className="col-span-1 sm:col-span-3">
                           <label className="block text-[11px] font-medium text-slate-500 mb-1">
                             Nilai Murni
                           </label>
@@ -550,7 +617,7 @@ export function JudgePortalTab({
                           />
                         </div>
 
-                        <div className="sm:col-span-3 rounded-xl bg-[#0C7A89]/[0.06] border border-[#0C7A89]/15 px-3.5 py-2 text-right">
+                        <div className="col-span-1 sm:col-span-3 rounded-xl bg-gradient-to-br from-[#0C7A89]/10 to-[#07525E]/5 border border-[#0C7A89]/15 px-3 py-2 text-right">
                           <div className="text-[11px] font-medium text-slate-500">
                             Nilai Terbobot
                           </div>
@@ -578,14 +645,14 @@ export function JudgePortalTab({
                   value={draftNotes}
                   onChange={(e) => setDraftNotes(e.target.value)}
                   placeholder="Tuliskan apresiasi atau rekomendasi penguatan untuk peserta ini..."
-                  className="w-full rounded-xl bg-white/90 border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition resize-none"
+                  className="w-full rounded-xl bg-white/95 border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition resize-none"
                 />
               </div>
 
               {saveFeedback && (
                 <div
                   role="status"
-                  className={`rounded-xl px-4 py-3 text-xs font-medium ${
+                  className={`rounded-xl px-4 py-3 text-xs font-medium break-words ${
                     saveFeedback.type === 'success'
                       ? 'bg-[#0C7A89]/10 text-[#07525E] border border-[#0C7A89]/25'
                       : 'bg-red-50 text-red-700 border border-red-200'
@@ -596,13 +663,13 @@ export function JudgePortalTab({
               )}
 
               {/* Live Summary & Submit Bar */}
-              <div className="rounded-2xl bg-gradient-to-r from-[#07525E] to-[#0C7A89] text-white p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="rounded-2xl bg-gradient-to-r from-[#07525E] via-[#096472] to-[#0C7A89] text-white p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm">
                 <div>
                   <div className="text-xs font-medium text-white/80">
                     Total Nilai Terbobot ({activeJudge.label})
                   </div>
                   <div className="mt-0.5 flex items-baseline gap-2">
-                    <span className="text-3xl font-extrabold font-mono tabular-nums">
+                    <span className="text-2xl sm:text-3xl font-extrabold font-mono tabular-nums">
                       {liveTotalWeighted.toFixed(2)}
                     </span>
                     <span className="text-xs font-mono text-white/75">/ 100.00</span>
@@ -612,10 +679,14 @@ export function JudgePortalTab({
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-[#07525E] bg-white hover:bg-amber-50 disabled:opacity-60 transition shadow-sm whitespace-nowrap shrink-0"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-[#07525E] bg-gradient-to-r from-white to-amber-50 hover:brightness-105 disabled:opacity-60 transition shadow-sm whitespace-nowrap shrink-0"
                 >
-                  <Save className="w-4 h-4 text-[#D88B15]" />
-                  <span>{isSaving ? 'Menyimpan...' : 'Simpan Penilaian'}</span>
+                  {isSaving ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-[#0C7A89]" />
+                  ) : (
+                    <Save className="w-4 h-4 text-[#D88B15]" />
+                  )}
+                  <span>{isSaving ? 'Menyimpan Nilai...' : 'Simpan Penilaian'}</span>
                 </button>
               </div>
             </form>

@@ -5,10 +5,16 @@ import { fileURLToPath } from 'url';
 import express from 'express';
 import multer from 'multer';
 import { createSeedDatabase } from './src/shared/seedData.ts';
-import { computeLeaderboard, normalizeWhatsApp } from './src/shared/scoring.ts';
+import {
+  computeLeaderboard,
+  extractJudgeAccessCode,
+  getParticipantMaterials,
+  normalizeWhatsApp,
+} from './src/shared/scoring.ts';
 import type {
   AwardDatabase,
   BootstrapResponse,
+  MaterialItem,
   MaterialType,
   ParticipantSubmission,
 } from './src/shared/types.ts';
@@ -61,6 +67,47 @@ function writeDatabase(db: AwardDatabase) {
   fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
 }
 
+function sanitizeMaterials(
+  materials: MaterialItem[] | undefined,
+  fallbackType: MaterialType | undefined,
+  fallbackUrl: string | undefined,
+  fallbackFileName: string | undefined,
+  fallbackFileSize: number | undefined
+): MaterialItem[] {
+  const validTypes: MaterialType[] = ['Link', 'Video', 'PDF/PPT'];
+  if (Array.isArray(materials) && materials.length > 0) {
+    return materials
+      .filter((m) => m && typeof m.url === 'string' && m.url.trim() !== '')
+      .map((m, idx) => {
+        const safeType = validTypes.includes(m.type) ? m.type : 'Link';
+        return {
+          id: m.id || `mat-${Date.now()}-${idx}`,
+          type: safeType,
+          title: (m.title || m.uploadedFileName || `Bahan ${safeType}`).trim(),
+          url: m.url.trim(),
+          driveFileId: m.driveFileId || undefined,
+          uploadedFileName: m.uploadedFileName || undefined,
+          uploadedFileSize:
+            typeof m.uploadedFileSize === 'number' ? m.uploadedFileSize : undefined,
+        };
+      });
+  }
+
+  const cleanUrl = (fallbackUrl || '').trim();
+  if (!cleanUrl) return [];
+  const safeType = fallbackType && validTypes.includes(fallbackType) ? fallbackType : 'Link';
+  return [
+    {
+      id: `mat-${Date.now()}-0`,
+      type: safeType,
+      title: fallbackFileName || `Bahan ${safeType}`,
+      url: cleanUrl,
+      uploadedFileName: fallbackFileName || undefined,
+      uploadedFileSize: typeof fallbackFileSize === 'number' ? fallbackFileSize : undefined,
+    },
+  ];
+}
+
 function buildBootstrapPayload(db: AwardDatabase): BootstrapResponse {
   const leaderboard = computeLeaderboard(
     db.participants,
@@ -68,8 +115,19 @@ function buildBootstrapPayload(db: AwardDatabase): BootstrapResponse {
     db.indicators,
     db.scores
   );
+  // Jangan ekspos nomor WhatsApp juri ke browser
+  const safeJudges = db.judges.map((j) => ({
+    ...j,
+    whatsapp: '',
+  }));
+  const normalizedParticipants = db.participants.map((p) => ({
+    ...p,
+    materials: getParticipantMaterials(p),
+  }));
   return {
     ...db,
+    participants: normalizedParticipants,
+    judges: safeJudges,
     leaderboard,
   };
 }
@@ -136,6 +194,7 @@ async function startServer() {
       materialUrl,
       uploadedFileName,
       uploadedFileSize,
+      materials,
       notes,
     } = req.body as {
       entityId?: string;
@@ -144,6 +203,7 @@ async function startServer() {
       materialUrl?: string;
       uploadedFileName?: string;
       uploadedFileSize?: number;
+      materials?: MaterialItem[];
       notes?: string;
     };
 
@@ -160,18 +220,19 @@ async function startServer() {
       return;
     }
 
-    const validTypes: MaterialType[] = ['Link', 'Video', 'PDF/PPT'];
-    if (!materialType || !validTypes.includes(materialType)) {
-      res.status(400).json({ error: 'Tipe bahan tidak valid.' });
+    const cleanMaterials = sanitizeMaterials(
+      materials,
+      materialType,
+      materialUrl,
+      uploadedFileName,
+      uploadedFileSize
+    );
+    if (cleanMaterials.length === 0) {
+      res.status(400).json({ error: 'Minimal 1 tautan bahan atau unggahan file wajib diisi.' });
       return;
     }
 
-    const cleanUrl = (materialUrl || '').trim();
-    if (!cleanUrl) {
-      res.status(400).json({ error: 'Tautan bahan atau unggahan file wajib diisi.' });
-      return;
-    }
-
+    const primary = cleanMaterials[0];
     const now = new Date().toISOString();
     const newParticipant: ParticipantSubmission = {
       id: `part-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -180,10 +241,11 @@ async function startServer() {
       entityName: entity.name,
       province: entity.province,
       innovationTitle: cleanTitle,
-      materialType,
-      materialUrl: cleanUrl,
-      uploadedFileName: uploadedFileName || undefined,
-      uploadedFileSize: typeof uploadedFileSize === 'number' ? uploadedFileSize : undefined,
+      materialType: primary.type,
+      materialUrl: primary.url,
+      uploadedFileName: primary.uploadedFileName,
+      uploadedFileSize: primary.uploadedFileSize,
+      materials: cleanMaterials,
       notes: (notes || '').trim(),
       submittedAt: now,
       updatedAt: now,
@@ -208,6 +270,7 @@ async function startServer() {
       materialUrl,
       uploadedFileName,
       uploadedFileSize,
+      materials,
       notes,
     } = req.body as {
       entityId?: string;
@@ -216,6 +279,7 @@ async function startServer() {
       materialUrl?: string;
       uploadedFileName?: string;
       uploadedFileSize?: number;
+      materials?: MaterialItem[];
       notes?: string;
     };
 
@@ -233,15 +297,19 @@ async function startServer() {
     }
 
     const cleanTitle = (innovationTitle || '').trim();
-    const cleanUrl = (materialUrl || '').trim();
-    if (!cleanTitle || !cleanUrl) {
-      res.status(400).json({ error: 'Judul inovasi dan tautan/file bahan wajib diisi.' });
+    const cleanMaterials = sanitizeMaterials(
+      materials,
+      materialType,
+      materialUrl,
+      uploadedFileName,
+      uploadedFileSize
+    );
+    if (!cleanTitle || cleanMaterials.length === 0) {
+      res.status(400).json({ error: 'Judul inovasi dan minimal 1 bahan wajib diisi.' });
       return;
     }
 
-    const validTypes: MaterialType[] = ['Link', 'Video', 'PDF/PPT'];
-    const safeType = materialType && validTypes.includes(materialType) ? materialType : 'Link';
-
+    const primary = cleanMaterials[0];
     const existing = db.participants[index];
     db.participants[index] = {
       ...existing,
@@ -250,10 +318,11 @@ async function startServer() {
       entityName: entity.name,
       province: entity.province,
       innovationTitle: cleanTitle,
-      materialType: safeType,
-      materialUrl: cleanUrl,
-      uploadedFileName: uploadedFileName ?? existing.uploadedFileName,
-      uploadedFileSize: uploadedFileSize ?? existing.uploadedFileSize,
+      materialType: primary.type,
+      materialUrl: primary.url,
+      uploadedFileName: primary.uploadedFileName,
+      uploadedFileSize: primary.uploadedFileSize,
+      materials: cleanMaterials,
       notes: (notes ?? '').trim(),
       updatedAt: new Date().toISOString(),
     };
@@ -285,30 +354,37 @@ async function startServer() {
     });
   });
 
-  // Judge authentication via WhatsApp number matched with Master Judges
+  // Judge authentication via 6 last digits of Master Judges WhatsApp number
   app.post('/api/judges/auth', (req, res) => {
-    const { whatsapp } = req.body as { whatsapp?: string };
-    const normalizedInput = normalizeWhatsApp(whatsapp || '');
-    if (!normalizedInput || normalizedInput.length < 9) {
+    const { accessCode, whatsapp } = req.body as { accessCode?: string; whatsapp?: string };
+    const cleanCode = String(accessCode || whatsapp || '').replace(/\D/g, '');
+    if (cleanCode.length !== 6) {
       res.status(400).json({
-        error: 'Masukkan nomor WhatsApp yang valid (contoh: 08114401001).',
+        error: 'Masukkan tepat 6 angka terakhir dari nomor WhatsApp Anda yang terdaftar.',
       });
       return;
     }
 
     const db = readDatabase();
     const matchedJudge = db.judges.find(
-      (j) => normalizeWhatsApp(j.whatsapp) === normalizedInput
+      (j) =>
+        extractJudgeAccessCode(j.whatsapp) === cleanCode ||
+        normalizeWhatsApp(j.whatsapp).slice(-6) === cleanCode
     );
 
     if (!matchedJudge) {
       res.status(401).json({
-        error: 'Nomor WhatsApp tidak terdaftar dalam Master Dewan Juri Award 2026.',
+        error: 'Kode akses tidak cocok dengan Master Dewan Juri Award 2026.',
       });
       return;
     }
 
-    res.json({ judge: matchedJudge });
+    res.json({
+      judge: {
+        ...matchedJudge,
+        whatsapp: '',
+      },
+    });
   });
 
   // Submit or update judge raw scores (0-100) for a participant

@@ -4,6 +4,7 @@ import type {
   LeaderboardEntry,
   MasterIndicator,
   MasterJudge,
+  MaterialItem,
   ParticipantSubmission,
   TieBreakerResolution,
 } from './types.ts';
@@ -18,6 +19,31 @@ export function normalizeWhatsApp(input: string): string {
     return '0' + digits;
   }
   return digits;
+}
+
+export function extractJudgeAccessCode(whatsapp: string): string {
+  const digits = normalizeWhatsApp(whatsapp).replace(/\D/g, '');
+  if (digits.length < 6) return '';
+  return digits.slice(-6);
+}
+
+export function getParticipantMaterials(participant: ParticipantSubmission): MaterialItem[] {
+  if (Array.isArray(participant.materials) && participant.materials.length > 0) {
+    return participant.materials.filter((m) => m && m.url && m.url.trim() !== '');
+  }
+  if (participant.materialUrl && participant.materialUrl.trim() !== '') {
+    return [
+      {
+        id: `${participant.id}-mat-1`,
+        type: participant.materialType,
+        title: participant.uploadedFileName || `Bahan ${participant.materialType}`,
+        url: participant.materialUrl,
+        uploadedFileName: participant.uploadedFileName,
+        uploadedFileSize: participant.uploadedFileSize,
+      },
+    ];
+  }
+  return [];
 }
 
 export function formatWhatsAppDisplay(wa: string): string {

@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
 import {
-  CheckCircle2,
   Edit3,
   ExternalLink,
   Eye,
   FileText,
   Link2,
+  Loader2,
   Plus,
   Search,
   Trash2,
@@ -19,13 +19,16 @@ import {
   apiUpdateParticipant,
   apiUploadFile,
 } from '../services/api';
+import { getParticipantMaterials } from '../shared/scoring';
 import type {
   BootstrapResponse,
   EntityType,
   MasterEntity,
+  MaterialItem,
   MaterialType,
   ParticipantSubmission,
 } from '../shared/types';
+import { EntityCombobox } from './EntityCombobox';
 
 interface AdminTabProps {
   entities: MasterEntity[];
@@ -44,13 +47,17 @@ export function AdminTab({
   const [entityType, setEntityType] = useState<EntityType>('DPW');
   const [entityId, setEntityId] = useState<string>('');
   const [innovationTitle, setInnovationTitle] = useState<string>('');
-  const [materialType, setMaterialType] = useState<MaterialType>('PDF/PPT');
-  const [materialUrl, setMaterialUrl] = useState<string>('');
-  const [uploadedFileName, setUploadedFileName] = useState<string | undefined>(undefined);
-  const [uploadedFileSize, setUploadedFileSize] = useState<number | undefined>(undefined);
   const [notes, setNotes] = useState<string>('');
 
-  const [isUploading, setIsUploading] = useState(false);
+  // Dynamic multi-materials list
+  const [materials, setMaterials] = useState<MaterialItem[]>([]);
+  const [draftType, setDraftType] = useState<MaterialType>('Link');
+  const [draftTitle, setDraftTitle] = useState<string>('');
+  const [draftUrl, setDraftUrl] = useState<string>('');
+
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(
+    null
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
     null
@@ -90,10 +97,10 @@ export function AdminTab({
     setEntityType(nextType);
     setEntityId('');
     setInnovationTitle('');
-    setMaterialType('PDF/PPT');
-    setMaterialUrl('');
-    setUploadedFileName(undefined);
-    setUploadedFileSize(undefined);
+    setMaterials([]);
+    setDraftType('Link');
+    setDraftTitle('');
+    setDraftUrl('');
     setNotes('');
   };
 
@@ -108,43 +115,104 @@ export function AdminTab({
     setEntityType(p.entityType);
     setEntityId(p.entityId);
     setInnovationTitle(p.innovationTitle);
-    setMaterialType(p.materialType);
-    setMaterialUrl(p.materialUrl);
-    setUploadedFileName(p.uploadedFileName);
-    setUploadedFileSize(p.uploadedFileSize);
+    setMaterials(getParticipantMaterials(p));
+    setDraftType('Link');
+    setDraftTitle('');
+    setDraftUrl('');
     setNotes(p.notes);
     setFeedback(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleFileUpload = async (file: File) => {
-    setIsUploading(true);
+  const detectTypeFromUrl = (url: string, fallback: MaterialType): MaterialType => {
+    const lower = url.toLowerCase();
+    if (/youtube\.com|youtu\.be|vimeo\.com|\.(mp4|webm|mov)$/i.test(lower)) {
+      return 'Video';
+    }
+    if (/\.(pdf|ppt|pptx|doc|docx)$/i.test(lower)) {
+      return 'PDF/PPT';
+    }
+    return fallback;
+  };
+
+  const handleAddLinkMaterial = () => {
+    const cleanUrl = draftUrl.trim();
+    if (!cleanUrl) {
+      setFeedback({ type: 'error', message: 'Masukkan tautan URL bahan terlebih dahulu.' });
+      return;
+    }
+    const inferredType = detectTypeFromUrl(cleanUrl, draftType);
+    const nextItem: MaterialItem = {
+      id: `mat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type: draftType,
+      title: draftTitle.trim() || `Bahan ${inferredType} #${materials.length + 1}`,
+      url: cleanUrl,
+    };
+    setMaterials((prev) => [...prev, nextItem]);
+    setDraftUrl('');
+    setDraftTitle('');
     setFeedback(null);
-    try {
-      const json = await apiUploadFile(file);
+  };
 
-      setMaterialUrl(json.url);
-      setUploadedFileName(json.fileName);
-      setUploadedFileSize(json.fileSize);
+  const handleRemoveMaterial = (id: string) => {
+    setMaterials((prev) => prev.filter((item) => item.id !== id));
+  };
 
-      const lower = file.name.toLowerCase();
-      if (/\.(mp4|webm|mov)$/i.test(lower)) {
-        setMaterialType('Video');
-      } else if (/\.(pdf|ppt|pptx|doc|docx)$/i.test(lower)) {
-        setMaterialType('PDF/PPT');
+  const handleFilesUpload = async (fileList: FileList | File[]) => {
+    const files = Array.from(fileList);
+    if (files.length === 0) return;
+
+    setFeedback(null);
+    setUploadProgress({ current: 0, total: files.length });
+
+    const uploadedItems: MaterialItem[] = [];
+    const errors: string[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      setUploadProgress({ current: i + 1, total: files.length });
+      try {
+        const json = await apiUploadFile(file);
+        const lower = file.name.toLowerCase();
+        let fileMatType: MaterialType = 'PDF/PPT';
+        if (/\.(mp4|webm|mov)$/i.test(lower)) {
+          fileMatType = 'Video';
+        } else if (/\.(png|jpe?g|webp|gif)$/i.test(lower)) {
+          fileMatType = 'Link';
+        }
+
+        uploadedItems.push({
+          id: `mat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          type: fileMatType,
+          title: json.fileName || file.name,
+          url: json.url,
+          driveFileId: json.driveFileId,
+          uploadedFileName: json.fileName || file.name,
+          uploadedFileSize: json.fileSize || file.size,
+        });
+      } catch (err) {
+        errors.push(
+          `${file.name}: ${err instanceof Error ? err.message : 'Gagal mengunggah berkas.'}`
+        );
       }
+    }
 
+    if (uploadedItems.length > 0) {
+      setMaterials((prev) => [...prev, ...uploadedItems]);
+    }
+
+    if (errors.length > 0) {
+      setFeedback({ type: 'error', message: errors.join(' · ') });
+    } else if (uploadedItems.length > 0) {
       setFeedback({
         type: 'success',
-        message: `File "${file.name}" berhasil diunggah dan ditautkan.`,
+        message: `${uploadedItems.length} berkas berhasil diunggah dan ditambahkan ke daftar bahan.`,
       });
-    } catch (err) {
-      setFeedback({
-        type: 'error',
-        message: err instanceof Error ? err.message : 'Terjadi kesalahan saat unggah file.',
-      });
-    } finally {
-      setIsUploading(false);
+    }
+
+    setUploadProgress(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -160,23 +228,38 @@ export function AdminTab({
       setFeedback({ type: 'error', message: 'Judul inovasi wajib diisi.' });
       return;
     }
-    if (!materialUrl.trim()) {
+
+    // Sertakan link yang sedang diketik namun belum sempat diklik "+ Tambah"
+    const finalMaterials = [...materials];
+    if (draftUrl.trim()) {
+      finalMaterials.push({
+        id: `mat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        type: draftType,
+        title: draftTitle.trim() || `Bahan ${draftType} #${finalMaterials.length + 1}`,
+        url: draftUrl.trim(),
+      });
+    }
+
+    if (finalMaterials.length === 0) {
       setFeedback({
         type: 'error',
-        message: 'Masukkan tautan bahan atau unggah file presentasi terlebih dahulu.',
+        message: 'Tambahkan minimal 1 tautan bahan atau unggah file presentasi terlebih dahulu.',
       });
       return;
     }
 
     setIsSubmitting(true);
     try {
+      const primary = finalMaterials[0];
       const payload = {
         entityId,
         innovationTitle: innovationTitle.trim(),
-        materialType,
-        materialUrl: materialUrl.trim(),
-        uploadedFileName,
-        uploadedFileSize,
+        materialType: primary.type,
+        materialUrl: primary.url,
+        driveFileId: primary.driveFileId,
+        uploadedFileName: primary.uploadedFileName,
+        uploadedFileSize: primary.uploadedFileSize,
+        materials: finalMaterials,
         notes: notes.trim(),
       };
 
@@ -189,7 +272,7 @@ export function AdminTab({
       resetForm(entityType);
       setFeedback({
         type: 'success',
-        message: `Bahan inovasi peserta berhasil ${actionLabel} ke dalam database.`,
+        message: `Bahan inovasi peserta (${finalMaterials.length} bahan) berhasil ${actionLabel}.`,
       });
     } catch (err) {
       setFeedback({
@@ -221,17 +304,19 @@ export function AdminTab({
     }
   };
 
+  const isUploading = uploadProgress !== null;
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 items-start">
       {/* Form Input Bahan Peserta */}
-      <section className="lg:col-span-5 glass-panel rounded-3xl p-6 sm:p-7">
-        <div className="flex items-start justify-between gap-3 pb-5 border-b border-slate-200/70">
-          <div>
-            <h2 className="text-lg font-bold text-[#07525E]">
+      <section className="lg:col-span-5 glass-panel rounded-3xl p-4 sm:p-7">
+        <div className="flex items-start justify-between gap-3 pb-4 sm:pb-5 border-b border-slate-200/70">
+          <div className="min-w-0">
+            <h2 className="text-base sm:text-lg font-bold text-[#07525E]">
               {editingId ? 'Perbarui Bahan Peserta' : 'Input Bahan Peserta'}
             </h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Formulir pendaftaran dan unggah berkas inovasi oleh Admin DPP Wahdah Islamiyah.
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              Formulir pendaftaran dan unggah berkas inovasi oleh Admin Dewan Pimpinan Pusat Wahdah Islamiyah.
             </p>
           </div>
           {editingId && (
@@ -252,13 +337,13 @@ export function AdminTab({
             <label className="block text-xs font-semibold text-slate-700 mb-2">
               Jenis Entitas
             </label>
-            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-slate-900/[0.05] border border-slate-200/70">
+            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-gradient-to-r from-[#07525E]/[0.06] to-[#0C7A89]/[0.06] border border-slate-200/70">
               <button
                 type="button"
                 onClick={() => handleEntityTypeChange('DPW')}
                 className={`py-2.5 px-3 rounded-xl text-xs font-semibold transition whitespace-nowrap ${
                   entityType === 'DPW'
-                    ? 'bg-white text-[#07525E] shadow-sm'
+                    ? 'bg-gradient-to-r from-[#0C7A89] to-[#07525E] text-white shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -269,7 +354,7 @@ export function AdminTab({
                 onClick={() => handleEntityTypeChange('DPD')}
                 className={`py-2.5 px-3 rounded-xl text-xs font-semibold transition whitespace-nowrap ${
                   entityType === 'DPD'
-                    ? 'bg-white text-[#07525E] shadow-sm'
+                    ? 'bg-gradient-to-r from-[#0C7A89] to-[#07525E] text-white shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -278,30 +363,14 @@ export function AdminTab({
             </div>
           </div>
 
-          {/* Dropdown Wilayah Dinamis */}
-          <div>
-            <label htmlFor="entity-select" className="block text-xs font-semibold text-slate-700 mb-2">
-              Wilayah {entityType === 'DPW' ? 'Dewan Pengurus Wilayah (Provinsi)' : 'Dewan Pengurus Daerah (Kab/Kota)'}
-            </label>
-            <select
-              id="entity-select"
-              value={entityId}
-              onChange={(e) => setEntityId(e.target.value)}
-              className="w-full rounded-xl bg-white/90 border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition"
-            >
-              <option value="">
-                -- Pilih {entityType === 'DPW' ? 'DPW Provinsi' : 'DPD Kab/Kota'} ({filteredMasterEntities.length} tersedia) --
-              </option>
-              {filteredMasterEntities.map((ent) => {
-                const hasSubmitted = submittedEntityIds.has(ent.id);
-                return (
-                  <option key={ent.id} value={ent.id}>
-                    {ent.name} ({ent.province}){hasSubmitted ? ' — Sudah Terdaftar' : ''}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
+          {/* Searchable Combobox Wilayah */}
+          <EntityCombobox
+            entityType={entityType}
+            entities={filteredMasterEntities}
+            value={entityId}
+            submittedEntityIds={submittedEntityIds}
+            onChange={(id) => setEntityId(id)}
+          />
 
           {/* Judul Inovasi */}
           <div>
@@ -314,82 +383,145 @@ export function AdminTab({
               value={innovationTitle}
               onChange={(e) => setInnovationTitle(e.target.value)}
               placeholder="Contoh: Ekosistem Wakaf Produktif & Layanan Ummat"
-              className="w-full rounded-xl bg-white/90 border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition"
+              className="w-full rounded-xl bg-white/95 border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition"
             />
           </div>
 
-          {/* Tipe Bahan */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-2">
-              Tipe Bahan Presentasi
-            </label>
-            <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-slate-900/[0.05] border border-slate-200/70">
-              {(['Link', 'Video', 'PDF/PPT'] as MaterialType[]).map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => setMaterialType(type)}
-                  className={`inline-flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-semibold transition whitespace-nowrap ${
-                    materialType === type
-                      ? 'bg-white text-[#07525E] shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {type === 'Link' && <Link2 className="w-3.5 h-3.5" />}
-                  {type === 'Video' && <Video className="w-3.5 h-3.5" />}
-                  {type === 'PDF/PPT' && <FileText className="w-3.5 h-3.5" />}
-                  <span>{type}</span>
-                </button>
-              ))}
+          {/* Multi-Bahan Builder */}
+          <div className="space-y-3 rounded-2xl border border-[#0C7A89]/15 bg-gradient-to-br from-[#0C7A89]/[0.04] via-white/70 to-[#D88B15]/[0.04] p-4">
+            <div className="flex items-center justify-between gap-2">
+              <label className="block text-xs font-bold text-[#07525E]">
+                Daftar Bahan Presentasi ({materials.length} ditambahkan)
+              </label>
+              <span className="text-[11px] text-slate-500">Bisa lebih dari 1 file / tautan</span>
             </div>
-          </div>
 
-          {/* Tautan / Upload File */}
-          <div className="space-y-3">
-            <label htmlFor="material-url" className="block text-xs font-semibold text-slate-700">
-              Tautan Bahan atau Unggah Berkas
-            </label>
-            <input
-              id="material-url"
-              type="text"
-              value={materialUrl}
-              onChange={(e) => {
-                setMaterialUrl(e.target.value);
-                if (!e.target.value.startsWith('/uploads/')) {
-                  setUploadedFileName(undefined);
-                  setUploadedFileSize(undefined);
-                }
-              }}
-              placeholder="https://drive.google.com/... atau unggah file di bawah"
-              className="w-full rounded-xl bg-white/90 border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition"
-            />
+            {/* Added Materials List */}
+            {materials.length > 0 && (
+              <div className="space-y-2">
+                {materials.map((item, idx) => (
+                  <div
+                    key={item.id}
+                    className="rounded-xl bg-white/95 border border-slate-200/80 px-3 py-2.5 flex items-start justify-between gap-2.5 shadow-xs"
+                  >
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                      <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#0C7A89]/15 to-[#07525E]/10 text-[#07525E] flex items-center justify-center shrink-0 mt-0.5">
+                        {item.type === 'PDF/PPT' && <FileText className="w-3.5 h-3.5" />}
+                        {item.type === 'Video' && <Video className="w-3.5 h-3.5" />}
+                        {item.type === 'Link' && <Link2 className="w-3.5 h-3.5" />}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-slate-900 break-words">
+                          {idx + 1}. {item.title}
+                        </div>
+                        <div className="text-[11px] text-[#0C7A89] font-medium mt-0.5">
+                          {item.type}
+                          {typeof item.uploadedFileSize === 'number' &&
+                            ` · ${(item.uploadedFileSize / 1024 / 1024).toFixed(2)} MB`}
+                        </div>
+                        <div className="text-[11px] text-slate-500 break-all line-clamp-1 mt-0.5">
+                          {item.url}
+                        </div>
+                      </div>
+                    </div>
 
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveMaterial(item.id)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition shrink-0"
+                      aria-label={`Hapus bahan ${item.title}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add Link Form Row */}
+            <div className="space-y-2.5 pt-1">
+              <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-900/[0.05] border border-slate-200/70">
+                {(['Link', 'Video', 'PDF/PPT'] as MaterialType[]).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setDraftType(type)}
+                    className={`inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-[11px] font-semibold transition whitespace-nowrap ${
+                      draftType === type
+                        ? 'bg-white text-[#07525E] shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {type === 'Link' && <Link2 className="w-3 h-3" />}
+                    {type === 'Video' && <Video className="w-3 h-3" />}
+                    {type === 'PDF/PPT' && <FileText className="w-3 h-3" />}
+                    <span>{type}</span>
+                  </button>
+                ))}
+              </div>
+
+              <input
+                type="text"
+                value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
+                placeholder="Judul/Label bahan (opsional, mis: Video YouTube / Deck PDF)"
+                className="w-full rounded-xl bg-white/95 border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition"
+              />
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={draftUrl}
+                  onChange={(e) => setDraftUrl(e.target.value)}
+                  placeholder="https://youtube.com/... atau https://drive.google.com/..."
+                  className="flex-1 min-w-0 rounded-xl bg-white/95 border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddLinkMaterial}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-[#D88B15] to-[#B97209] hover:brightness-105 transition whitespace-nowrap shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tambah Tautan</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Multi-File Dropzone */}
             <div
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
-                const file = e.dataTransfer.files?.[0];
-                if (file) void handleFileUpload(file);
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                  void handleFilesUpload(e.dataTransfer.files);
+                }
               }}
-              className="rounded-2xl border border-dashed border-[#0C7A89]/35 bg-[#0C7A89]/[0.03] p-4 text-center hover:bg-[#0C7A89]/[0.06] transition"
+              className="rounded-xl border border-dashed border-[#0C7A89]/35 bg-white/75 p-3.5 text-center hover:bg-white/95 transition"
             >
               <input
                 ref={fileInputRef}
                 type="file"
+                multiple
                 accept=".pdf,.ppt,.pptx,.doc,.docx,.mp4,.webm,.mov,.png,.jpg,.jpeg"
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleFileUpload(file);
+                  if (e.target.files && e.target.files.length > 0) {
+                    void handleFilesUpload(e.target.files);
+                  }
                 }}
                 className="hidden"
               />
-              <UploadCloud className="w-6 h-6 text-[#0C7A89] mx-auto" />
-              <div className="mt-2 text-xs font-medium text-slate-700">
-                {isUploading ? (
-                  <span className="text-[#0C7A89] font-semibold">Mengunggah berkas...</span>
-                ) : (
-                  <>
-                    Tarik berkas ke sini atau{' '}
+              {isUploading && uploadProgress ? (
+                <div className="py-1 flex items-center justify-center gap-2 text-xs font-semibold text-[#0C7A89]">
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                  <span>
+                    Mengunggah berkas {uploadProgress.current} dari {uploadProgress.total}...
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <UploadCloud className="w-5 h-5 text-[#0C7A89] mx-auto" />
+                  <div className="mt-1.5 text-xs font-medium text-slate-700">
+                    Tarik banyak berkas ke sini atau{' '}
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
@@ -397,25 +529,11 @@ export function AdminTab({
                     >
                       pilih file dari perangkat
                     </button>
-                  </>
-                )}
-              </div>
-              <p className="mt-1 text-[11px] text-slate-500">
-                Mendukung PDF, PPT/PPTX, Video MP4/WebM, Gambar (maks. 25 MB)
-              </p>
-
-              {uploadedFileName && (
-                <div className="mt-3 pt-3 border-t border-[#0C7A89]/15 flex items-center justify-between gap-2 text-left text-xs">
-                  <div className="min-w-0">
-                    <div className="font-semibold text-[#07525E] truncate">{uploadedFileName}</div>
-                    {typeof uploadedFileSize === 'number' && (
-                      <div className="text-[11px] text-slate-500 tabular-nums">
-                        {(uploadedFileSize / 1024 / 1024).toFixed(2)} MB
-                      </div>
-                    )}
                   </div>
-                  <CheckCircle2 className="w-4 h-4 text-[#0C7A89] shrink-0" />
-                </div>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Bisa pilih lebih dari 1 file sekaligus (PDF, PPT, Video, Gambar)
+                  </p>
+                </>
               )}
             </div>
           </div>
@@ -431,14 +549,14 @@ export function AdminTab({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Ringkasan dampak, mitra kolaborasi, atau keterangan tambahan untuk dewan juri..."
-              className="w-full rounded-xl bg-white/90 border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition resize-none"
+              className="w-full rounded-xl bg-white/95 border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition resize-none"
             />
           </div>
 
           {feedback && (
             <div
               role="status"
-              className={`rounded-xl px-4 py-3 text-xs font-medium ${
+              className={`rounded-xl px-4 py-3 text-xs font-medium break-words ${
                 feedback.type === 'success'
                   ? 'bg-[#0C7A89]/10 text-[#07525E] border border-[#0C7A89]/25'
                   : 'bg-red-50 text-red-700 border border-red-200'
@@ -451,12 +569,16 @@ export function AdminTab({
           <button
             type="submit"
             disabled={isSubmitting || isUploading}
-            className="w-full inline-flex items-center justify-center gap-2 py-3 px-5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-[#0C7A89] to-[#07525E] hover:brightness-110 disabled:opacity-60 transition shadow-sm"
+            className="w-full inline-flex items-center justify-center gap-2 py-3 px-5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-[#0C7A89] via-[#096472] to-[#07525E] hover:brightness-110 disabled:opacity-60 transition shadow-sm"
           >
-            <Plus className="w-4 h-4" />
+            {isSubmitting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Plus className="w-4 h-4" />
+            )}
             <span>
               {isSubmitting
-                ? 'Menyimpan...'
+                ? 'Menyimpan Data...'
                 : editingId
                   ? 'Simpan Perubahan Peserta'
                   : 'Simpan Bahan Peserta'}
@@ -466,10 +588,10 @@ export function AdminTab({
       </section>
 
       {/* Daftar Bahan Peserta Terdaftar */}
-      <section className="lg:col-span-7 glass-panel rounded-3xl p-6 sm:p-7">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-200/70">
+      <section className="lg:col-span-7 glass-panel rounded-3xl p-4 sm:p-7">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 sm:pb-5 border-b border-slate-200/70">
           <div>
-            <h2 className="text-lg font-bold text-[#07525E]">
+            <h2 className="text-base sm:text-lg font-bold text-[#07525E]">
               Daftar Bahan Peserta Terdaftar
             </h2>
             <p className="text-xs text-slate-500 mt-0.5 tabular-nums">
@@ -485,7 +607,7 @@ export function AdminTab({
                 onClick={() => setListFilter(tab)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
                   listFilter === tab
-                    ? 'bg-white text-[#07525E] shadow-sm'
+                    ? 'bg-gradient-to-r from-[#0C7A89] to-[#07525E] text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -503,7 +625,7 @@ export function AdminTab({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Cari nama DPW/DPD, provinsi, atau judul inovasi..."
-            className="w-full rounded-xl bg-white/90 border border-slate-200 pl-10 pr-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition"
+            className="w-full rounded-xl bg-white/95 border border-slate-200 pl-10 pr-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition"
           />
         </div>
 
@@ -519,74 +641,79 @@ export function AdminTab({
               </p>
             </div>
           ) : (
-            filteredParticipants.map((p) => (
-              <article
-                key={p.id}
-                className="rounded-2xl border border-slate-200/80 bg-white/85 p-5 hover:border-[#0C7A89]/40 transition"
-              >
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 font-medium">
-                      <span className="font-bold text-[#0C7A89]">{p.entityType}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{p.province}</span>
-                      <span aria-hidden="true">·</span>
-                      <span className="text-[#D88B15] font-semibold">{p.materialType}</span>
-                    </div>
-                    <h3 className="mt-1 text-base font-bold text-[#07525E] leading-snug">
-                      {p.entityName}
-                    </h3>
-                    <p className="mt-0.5 text-sm font-semibold text-slate-800">
-                      {p.innovationTitle}
-                    </p>
-                    {p.notes && (
-                      <p className="mt-2 text-xs text-slate-600 leading-relaxed line-clamp-2">
-                        {p.notes}
+            filteredParticipants.map((p) => {
+              const mats = getParticipantMaterials(p);
+              return (
+                <article
+                  key={p.id}
+                  className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white/95 via-white/90 to-[#F6FAFB]/90 p-4 sm:p-5 hover:border-[#0C7A89]/40 transition"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 font-medium">
+                        <span className="font-bold text-[#0C7A89]">{p.entityType}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>{p.province}</span>
+                        <span aria-hidden="true">·</span>
+                        <span className="text-[#D88B15] font-semibold">
+                          {mats.length} Bahan ({Array.from(new Set(mats.map((m) => m.type))).join(', ')})
+                        </span>
+                      </div>
+                      <h3 className="mt-1 text-sm sm:text-base font-bold text-[#07525E] leading-snug break-words">
+                        {p.entityName}
+                      </h3>
+                      <p className="mt-0.5 text-xs sm:text-sm font-semibold text-slate-800 break-words">
+                        {p.innovationTitle}
                       </p>
-                    )}
-                  </div>
+                      {p.notes && (
+                        <p className="mt-2 text-xs text-slate-600 leading-relaxed line-clamp-2">
+                          {p.notes}
+                        </p>
+                      )}
+                    </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => onPreviewMaterial(p)}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#07525E] bg-[#0C7A89]/10 hover:bg-[#0C7A89]/20 transition whitespace-nowrap"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Pratinjau</span>
-                    </button>
-                    <a
-                      href={p.materialUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2 rounded-xl text-slate-600 hover:text-[#07525E] hover:bg-slate-900/5 transition"
-                      title="Buka tautan bahan"
-                      aria-label={`Buka tautan bahan ${p.entityName}`}
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => handleEditClick(p)}
-                      className="p-2 rounded-xl text-slate-600 hover:text-[#0C7A89] hover:bg-[#0C7A89]/10 transition"
-                      title="Edit bahan peserta"
-                      aria-label={`Edit ${p.entityName}`}
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteTarget(p)}
-                      className="p-2 rounded-xl text-slate-500 hover:text-red-600 hover:bg-red-50 transition"
-                      title="Hapus peserta"
-                      aria-label={`Hapus ${p.entityName}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => onPreviewMaterial(p)}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#07525E] bg-[#0C7A89]/10 hover:bg-[#0C7A89]/20 transition whitespace-nowrap"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Pratinjau ({mats.length})</span>
+                      </button>
+                      <a
+                        href={p.materialUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 rounded-xl text-slate-600 hover:text-[#07525E] hover:bg-slate-900/5 transition"
+                        title="Buka tautan bahan utama"
+                        aria-label={`Buka tautan bahan ${p.entityName}`}
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => handleEditClick(p)}
+                        className="p-2 rounded-xl text-slate-600 hover:text-[#0C7A89] hover:bg-[#0C7A89]/10 transition"
+                        title="Edit bahan peserta"
+                        aria-label={`Edit ${p.entityName}`}
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(p)}
+                        className="p-2 rounded-xl text-slate-500 hover:text-red-600 hover:bg-red-50 transition"
+                        title="Hapus peserta"
+                        aria-label={`Hapus ${p.entityName}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))
+                </article>
+              );
+            })
           )}
         </div>
       </section>
@@ -622,9 +749,10 @@ export function AdminTab({
                 type="button"
                 disabled={isDeleting}
                 onClick={() => void handleConfirmDelete()}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 transition"
               >
-                {isDeleting ? 'Menghapus...' : 'Ya, Hapus Data'}
+                {isDeleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{isDeleting ? 'Menghapus...' : 'Ya, Hapus Data'}</span>
               </button>
             </div>
           </div>

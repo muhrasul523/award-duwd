@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * BACKEND GOOGLE APPS SCRIPT — AWARD KOLABORASI DAN INOVASI MANDIRI 2026
- * Dewan Pengurus Pusat Wahdah Islamiyah
+ * Dewan Pimpinan Pusat Wahdah Islamiyah
  * ============================================================================
  *
  * CARA PASANG:
@@ -106,7 +106,7 @@ function setupSpreadsheet() {
         'Tempelkan link folder Google Drive tempat seluruh file upload peserta akan disimpan.',
       ],
       ['EVENT_NAME', 'Award Kolaborasi dan Inovasi Mandiri 2026', 'Nama program penghargaan'],
-      ['INSTITUTION', 'Dewan Pengurus Pusat Wahdah Islamiyah', 'Nama lembaga penyelenggara'],
+      ['INSTITUTION', 'Dewan Pimpinan Pusat Wahdah Islamiyah', 'Nama lembaga penyelenggara'],
     ]);
   }
 
@@ -242,6 +242,7 @@ function setupSpreadsheet() {
     'notes',
     'submittedAt',
     'updatedAt',
+    'materialsJson',
   ]);
   if (participantsSheet.getLastRow() <= 1) {
     writeRows_(participantsSheet, [
@@ -260,6 +261,20 @@ function setupSpreadsheet() {
         'Menghubungkan 24 DPD kabupaten/kota dalam satu dashboard aset wakaf produktif dan layanan kesehatan gratis.',
         '2026-11-08T08:15:00.000Z',
         now,
+        JSON.stringify([
+          {
+            id: 'mat-p1-1',
+            type: 'PDF/PPT',
+            title: 'Deck Presentasi Ekosistem Wakaf Sulsel.pdf',
+            url: 'https://wahdah.or.id/award-2026/ekosistem-wakaf-sulsel.pdf',
+          },
+          {
+            id: 'mat-p1-2',
+            type: 'Video',
+            title: 'Video Dokumentasi Klinik Pemberdayaan Ummat',
+            url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          },
+        ]),
       ],
       [
         'part-2',
@@ -276,6 +291,7 @@ function setupSpreadsheet() {
         'Kolaborasi aktif 42 masjid binaan, Baznas Kota, dan koperasi syariah berbasis QRIS terpusat.',
         '2026-11-08T10:30:00.000Z',
         now,
+        '',
       ],
       [
         'part-3',
@@ -292,6 +308,20 @@ function setupSpreadsheet() {
         'Inkubasi 120 UMKM binaan dan produksi konten dakwah multi-platform dengan jangkauan nasional.',
         '2026-11-08T13:20:00.000Z',
         now,
+        JSON.stringify([
+          {
+            id: 'mat-p3-1',
+            type: 'Video',
+            title: 'Video Profil Inkubator Pemuda DKI Jakarta',
+            url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          },
+          {
+            id: 'mat-p3-2',
+            type: 'Link',
+            title: 'Portal Katalog UMKM Pemuda Wahdah Jakarta',
+            url: 'https://jakarta.wahdah.or.id/inkubator-pemuda',
+          },
+        ]),
       ],
       [
         'part-4',
@@ -308,6 +338,7 @@ function setupSpreadsheet() {
         'Budidaya hidroponik skala komersial untuk menopang biaya operasional pondok tahfiz dan beasiswa santri.',
         '2026-11-09T07:45:00.000Z',
         now,
+        '',
       ],
       [
         'part-5',
@@ -324,6 +355,7 @@ function setupSpreadsheet() {
         'Menjangkau wilayah penyangga IKN melalui kemitraan sekolah Islam terpadu dan donatur korporasi.',
         '2026-11-09T11:10:00.000Z',
         now,
+        '',
       ],
       [
         'part-6',
@@ -340,6 +372,7 @@ function setupSpreadsheet() {
         'Gudang logistik relawan siaga bencana dengan pelacakan distribusi bantuan secara terbuka.',
         '2026-11-09T15:00:00.000Z',
         now,
+        '',
       ],
     ]);
   }
@@ -420,6 +453,13 @@ function ensureSheet_(ss, name, headers) {
     } catch (freezeErr) {
       // Abaikan jika ukuran baris belum siap dibekukan
     }
+  } else if (sheet.getLastColumn() < headers.length) {
+    for (var col = sheet.getLastColumn() + 1; col <= headers.length; col++) {
+      var cell = sheet.getRange(1, col);
+      cell.setValue(headers[col - 1]);
+      cell.setBackground('#07525E').setFontColor('#FFFFFF').setFontWeight('bold');
+    }
+    SpreadsheetApp.flush();
   }
   return sheet;
 }
@@ -476,7 +516,7 @@ function buildBootstrapData_(ss) {
       label: String(r.label),
       name: String(r.name),
       title: String(r.title),
-      whatsapp: normalizeWhatsApp_(String(r.whatsapp)),
+      whatsapp: '',
     };
   });
 
@@ -491,6 +531,17 @@ function buildBootstrapData_(ss) {
   });
 
   var participants = readRecords_(ss.getSheetByName(SHEET_NAMES.PARTICIPANTS)).map(function (r) {
+    var parsedMaterials = undefined;
+    if (r.materialsJson && String(r.materialsJson).trim() !== '') {
+      try {
+        var arr = JSON.parse(String(r.materialsJson));
+        if (arr && arr.length > 0) {
+          parsedMaterials = arr;
+        }
+      } catch (matErr) {
+        parsedMaterials = undefined;
+      }
+    }
     return {
       id: String(r.id),
       entityId: String(r.entityId),
@@ -502,6 +553,7 @@ function buildBootstrapData_(ss) {
       materialUrl: String(r.materialUrl),
       uploadedFileName: r.uploadedFileName ? String(r.uploadedFileName) : undefined,
       uploadedFileSize: r.uploadedFileSize !== '' ? Number(r.uploadedFileSize) : undefined,
+      materials: parsedMaterials,
       notes: String(r.notes || ''),
       submittedAt: String(r.submittedAt || ''),
       updatedAt: String(r.updatedAt || ''),
@@ -907,9 +959,21 @@ function doPost(e) {
       var entity = findById_(entities, body.entityId);
       if (!entity) return jsonOutput_({ error: 'Entitas DPW/DPD tidak valid.' });
 
+      var matList = body.materials && body.materials.length ? body.materials : null;
+      var primaryMat = matList ? matList[0] : null;
+      var matType = primaryMat ? String(primaryMat.type || 'Link') : String(body.materialType || 'Link');
+      var matUrl = primaryMat ? String(primaryMat.url || '').trim() : String(body.materialUrl || '').trim();
+      var driveId = primaryMat ? String(primaryMat.driveFileId || '') : String(body.driveFileId || '');
+      var fileName = primaryMat ? String(primaryMat.uploadedFileName || '') : String(body.uploadedFileName || '');
+      var fileSize = primaryMat && primaryMat.uploadedFileSize ? primaryMat.uploadedFileSize : (body.uploadedFileSize || '');
+
       var now = new Date().toISOString();
       var newId = 'part-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-      var pSheet = ss.getSheetByName(SHEET_NAMES.PARTICIPANTS);
+      var pSheet = ensureSheet_(ss, SHEET_NAMES.PARTICIPANTS, [
+        'id', 'entityId', 'entityType', 'entityName', 'province', 'innovationTitle',
+        'materialType', 'materialUrl', 'driveFileId', 'uploadedFileName', 'uploadedFileSize',
+        'notes', 'submittedAt', 'updatedAt', 'materialsJson',
+      ]);
       pSheet.appendRow([
         newId,
         String(entity.id),
@@ -917,14 +981,15 @@ function doPost(e) {
         String(entity.name),
         String(entity.province),
         String(body.innovationTitle || '').trim(),
-        String(body.materialType || 'Link'),
-        String(body.materialUrl || '').trim(),
-        String(body.driveFileId || ''),
-        String(body.uploadedFileName || ''),
-        body.uploadedFileSize || '',
+        matType,
+        matUrl,
+        driveId,
+        fileName,
+        fileSize,
         String(body.notes || '').trim(),
         now,
         now,
+        matList ? JSON.stringify(matList) : '',
       ]);
       syncLeaderboardSheet_(ss);
       return jsonOutput_({ bootstrap: buildBootstrapData_(ss) });
@@ -935,13 +1000,19 @@ function doPost(e) {
       var entity2 = findById_(entities2, body.entityId);
       if (!entity2) return jsonOutput_({ error: 'Entitas DPW/DPD tidak valid.' });
 
-      var pSheet2 = ss.getSheetByName(SHEET_NAMES.PARTICIPANTS);
+      var pSheet2 = ensureSheet_(ss, SHEET_NAMES.PARTICIPANTS, [
+        'id', 'entityId', 'entityType', 'entityName', 'province', 'innovationTitle',
+        'materialType', 'materialUrl', 'driveFileId', 'uploadedFileName', 'uploadedFileSize',
+        'notes', 'submittedAt', 'updatedAt', 'materialsJson',
+      ]);
+      var matList2 = body.materials && body.materials.length ? body.materials : null;
+      var primaryMat2 = matList2 ? matList2[0] : null;
       var rows2 = pSheet2.getDataRange().getValues();
       var updated = false;
       for (var r = 1; r < rows2.length; r++) {
         if (String(rows2[r][0]) === String(body.id)) {
           var submittedAt = rows2[r][12] || new Date().toISOString();
-          pSheet2.getRange(r + 1, 1, 1, 14).setValues([
+          pSheet2.getRange(r + 1, 1, 1, 15).setValues([
             [
               String(body.id),
               String(entity2.id),
@@ -949,14 +1020,15 @@ function doPost(e) {
               String(entity2.name),
               String(entity2.province),
               String(body.innovationTitle || '').trim(),
-              String(body.materialType || 'Link'),
-              String(body.materialUrl || '').trim(),
-              String(body.driveFileId || rows2[r][8] || ''),
-              String(body.uploadedFileName || rows2[r][9] || ''),
-              body.uploadedFileSize || rows2[r][10] || '',
+              primaryMat2 ? String(primaryMat2.type || 'Link') : String(body.materialType || 'Link'),
+              primaryMat2 ? String(primaryMat2.url || '').trim() : String(body.materialUrl || '').trim(),
+              primaryMat2 ? String(primaryMat2.driveFileId || '') : String(body.driveFileId || rows2[r][8] || ''),
+              primaryMat2 ? String(primaryMat2.uploadedFileName || '') : String(body.uploadedFileName || rows2[r][9] || ''),
+              primaryMat2 && primaryMat2.uploadedFileSize ? primaryMat2.uploadedFileSize : (body.uploadedFileSize || rows2[r][10] || ''),
               String(body.notes || '').trim(),
               submittedAt,
               new Date().toISOString(),
+              matList2 ? JSON.stringify(matList2) : String(rows2[r][14] || ''),
             ],
           ]);
           updated = true;
@@ -988,30 +1060,31 @@ function doPost(e) {
     }
 
     if (action === 'authJudge') {
-      var norm = normalizeWhatsApp_(body.whatsapp);
-      if (!norm || norm.length < 9) {
+      var rawCode = String(body.accessCode || body.whatsapp || '').replace(/\D/g, '');
+      if (rawCode.length !== 6) {
         return jsonOutput_({
-          error: 'Masukkan nomor WhatsApp yang valid (contoh: 08114401001).',
+          error: 'Masukkan tepat 6 angka terakhir dari nomor WhatsApp Anda yang terdaftar.',
         });
       }
       var judges = readRecords_(ss.getSheetByName(SHEET_NAMES.JUDGES));
       var matched = null;
       for (var j = 0; j < judges.length; j++) {
-        if (normalizeWhatsApp_(judges[j].whatsapp) === norm) {
+        var judgeDigits = normalizeWhatsApp_(judges[j].whatsapp).replace(/\D/g, '');
+        if (judgeDigits.length >= 6 && judgeDigits.slice(-6) === rawCode) {
           matched = {
             id: String(judges[j].id),
             code: String(judges[j].code),
             label: String(judges[j].label),
             name: String(judges[j].name),
             title: String(judges[j].title),
-            whatsapp: normalizeWhatsApp_(judges[j].whatsapp),
+            whatsapp: '',
           };
           break;
         }
       }
       if (!matched) {
         return jsonOutput_({
-          error: 'Nomor WhatsApp tidak terdaftar dalam sheet Master_Juri.',
+          error: 'Kode akses tidak cocok dengan daftar pada sheet Master_Juri.',
         });
       }
       return jsonOutput_({ judge: matched });
