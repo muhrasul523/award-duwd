@@ -301,7 +301,9 @@ export function AppsScriptModal({
               </div>
               <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/70">
                 <div className="font-bold text-[#07525E]">4. Master_Indikator</div>
-                <div className="text-slate-600 mt-0.5">3 indikator penilaian lengkap dengan bobot (40%, 35%, 25%).</div>
+                <div className="text-slate-600 mt-0.5">
+                  Indikator &amp; bobot terpisah untuk kategori Kolaborasi dan Inovasi Mandiri.
+                </div>
               </div>
               <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/70">
                 <div className="font-bold text-[#07525E]">5. Peserta_Inovasi</div>
@@ -326,7 +328,9 @@ export function AppsScriptModal({
                 Klik tombol <span className="font-semibold text-slate-800">Salin Kode Code.gs</span> di atas, tempelkan menggantikan isi editor, lalu simpan.
               </li>
               <li>
-                Pilih fungsi <code className="font-mono text-[#07525E]">setupSpreadsheet</code> di toolbar atas lalu klik <span className="font-semibold text-slate-800">Run</span> untuk membuat seluruh 7 sheet otomatis.
+                Pilih fungsi <code className="font-mono text-[#07525E]">setupSpreadsheet</code> (atau{' '}
+                <code className="font-mono text-[#07525E]">upgradeDuaKategori</code> jika sheet lama sudah ada) di toolbar atas lalu klik{' '}
+                <span className="font-semibold text-slate-800">Run</span> untuk memperbarui struktur 7 sheet otomatis.
               </li>
               <li>
                 Buka sheet <span className="font-semibold text-slate-800">Pengaturan</span> dan tempelkan link Folder Google Drive tujuan pada sel <code className="font-mono text-[#07525E]">B2</code>.

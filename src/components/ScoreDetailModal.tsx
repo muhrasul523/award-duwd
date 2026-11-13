@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Award, CheckCircle2, Info, MessageSquare, Scale, X } from 'lucide-react';
+import { getAwardCategoryLabel, getIndicatorsForCategory } from '../shared/scoring';
 import type { LeaderboardEntry, MasterIndicator, MasterJudge } from '../shared/types';
 
 interface ScoreDetailModalProps {
@@ -36,7 +37,9 @@ export function ScoreDetailModal({
 
   if (!entry) return null;
 
-  const sortedIndicators = [...indicators].sort((a, b) => a.order - b.order);
+  const sortedIndicators = getIndicatorsForCategory(indicators, entry.awardCategory);
+  const totalWeight = sortedIndicators.reduce((acc, ind) => acc + ind.weight, 0);
+  const categoryLabel = getAwardCategoryLabel(entry.awardCategory);
 
   return (
     <div
@@ -56,7 +59,7 @@ export function ScoreDetailModal({
             <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
               <span className="font-bold text-[#D88B15] inline-flex items-center gap-1">
                 <Award className="w-3.5 h-3.5" />
-                Peringkat #{entry.rank}
+                Peringkat #{entry.rank} ({categoryLabel})
               </span>
               <span aria-hidden="true">·</span>
               <span className="font-semibold text-[#0C7A89]">{entry.participant.entityType}</span>
@@ -113,7 +116,7 @@ export function ScoreDetailModal({
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-[#07525E]">
-                Matriks Penilaian Per Juri &amp; Indikator
+                Matriks Penilaian Kategori {categoryLabel}
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 {viewMode === 'raw'
@@ -157,7 +160,7 @@ export function ScoreDetailModal({
             <table className="w-full text-left border-collapse min-w-[680px]">
               <thead>
                 <tr className="border-b border-slate-200/80 bg-slate-50/80 text-xs font-semibold text-slate-600">
-                  <th className="py-3.5 px-4">Indikator Penilaian</th>
+                  <th className="py-3.5 px-4">Indikator Penilaian ({categoryLabel})</th>
                   <th className="py-3.5 px-3 text-right whitespace-nowrap">Bobot</th>
                   {judges.map((judge) => (
                     <th key={judge.id} className="py-3.5 px-4 text-right whitespace-nowrap">
@@ -227,7 +230,7 @@ export function ScoreDetailModal({
                     Total Nilai Terbobot per Juri
                   </td>
                   <td className="py-3.5 px-3 text-right font-mono tabular-nums text-xs text-slate-500">
-                    100%
+                    {totalWeight}%
                   </td>
                   {entry.judgeMatrix.map((cell) => (
                     <td
@@ -252,7 +255,7 @@ export function ScoreDetailModal({
             <Info className="w-4 h-4 text-[#0C7A89] shrink-0 mt-0.5" />
             <span>
               Total Nilai Akhir dihitung dari rata-rata nilai terbobot seluruh juri yang telah
-              memberikan penilaian. Rumus kontribusi terbobot:{' '}
+              memberikan penilaian pada kategori {categoryLabel}. Rumus kontribusi terbobot:{' '}
               <span className="font-mono text-slate-700">Nilai Murni × Bobot (%)</span>.
             </span>
           </div>

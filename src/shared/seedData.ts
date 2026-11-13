@@ -68,35 +68,70 @@ export function createSeedDatabase(): AwardDatabase {
     ],
 
     indicators: [
+      // Kategori 1: Award Kolaborasi (Bobot: 40% + 35% + 25% = 100%)
       {
-        id: 'ind-1',
+        id: 'kol-1',
+        awardCategory: 'KOLABORASI',
         order: 1,
-        name: 'Kolaborasi Strategis & Lintas Lembaga',
+        name: 'Sinergi Lintas Lembaga & Pemerintah',
         description:
-          'Tingkat sinergi program bersama pemerintah daerah, lembaga mitra, masjid, serta unit amal usaha Wahdah Islamiyah.',
+          'Tingkat kolaborasi strategis bersama pemerintah daerah, lembaga mitra, masjid, serta unit amal usaha Wahdah Islamiyah.',
         weight: 40,
       },
       {
-        id: 'ind-2',
+        id: 'kol-2',
+        awardCategory: 'KOLABORASI',
         order: 2,
-        name: 'Orisinalitas, Dampak & Kemandirian Inovasi',
+        name: 'Dampak & Jangkauan Program Bersama',
         description:
-          'Kebaruan gagasan, manfaat terukur bagi masyarakat dan kader, serta kemandirian pendanaan dan operasional.',
+          'Manfaat terukur bagi masyarakat dan kader hasil sinergi multipihak serta efektivitas pemanfaatan sumber daya bersama.',
         weight: 35,
       },
       {
-        id: 'ind-3',
+        id: 'kol-3',
+        awardCategory: 'KOLABORASI',
         order: 3,
-        name: 'Replikasi, Keberlanjutan & Tata Kelola',
+        name: 'Tata Kelola Kemitraan & Keberlanjutan',
         description:
-          'Kesiapan SOP, dokumentasi digital, serta potensi duplikasi oleh DPW/DPD lain di seluruh Indonesia.',
+          'Kejelasan MoU/SOP kolaborasi, pelaporan transparan, serta potensi replikasi kemitraan oleh DPW/DPD lain.',
+        weight: 25,
+      },
+
+      // Kategori 2: Award Inovasi Mandiri (Bobot: 45% + 30% + 25% = 100%)
+      {
+        id: 'ino-1',
+        awardCategory: 'INOVASI_MANDIRI',
+        order: 1,
+        name: 'Orisinalitas & Kebaruan Solusi',
+        description:
+          'Tingkat kreativitas, keunikan pendekatan atau teknologi, dan terobosan baru dalam menjawab tantangan dakwah dan ummat.',
+        weight: 45,
+      },
+      {
+        id: 'ino-2',
+        awardCategory: 'INOVASI_MANDIRI',
+        order: 2,
+        name: 'Kemandirian Operasional & Pendanaan',
+        description:
+          'Kemampuan entitas menopang program inovasi secara swadaya, berkelanjutan secara finansial, dan mandiri secara ekosistem.',
+        weight: 30,
+      },
+      {
+        id: 'ino-3',
+        awardCategory: 'INOVASI_MANDIRI',
+        order: 3,
+        name: 'Efektivitas Implementasi & Replikasi',
+        description:
+          'Hasil nyata di lapangan, kelengkapan dokumentasi SOP digital, serta kemudahan adopsi oleh DPW/DPD lain.',
         weight: 25,
       },
     ],
 
     participants: [
+      // === KATEGORI 1: KOLABORASI ===
       {
         id: 'part-1',
+        awardCategory: 'KOLABORASI',
         entityId: 'dpw-sulsel',
         entityType: 'DPW',
         entityName: 'DPW Wahdah Islamiyah Sulawesi Selatan',
@@ -118,12 +153,13 @@ export function createSeedDatabase(): AwardDatabase {
             url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
           },
         ],
-        notes: 'Menghubungkan 24 DPD kabupaten/kota dalam satu dashboard aset wakaf produktif dan layanan kesehatan gratis.',
+        notes: 'Menghubungkan 24 DPD kabupaten/kota dan dinas kesehatan daerah dalam satu ekosistem layanan ummat.',
         submittedAt: '2026-11-08T08:15:00.000Z',
         updatedAt: now,
       },
       {
         id: 'part-2',
+        awardCategory: 'KOLABORASI',
         entityId: 'dpd-makassar',
         entityType: 'DPD',
         entityName: 'DPD Wahdah Islamiyah Kota Makassar',
@@ -131,17 +167,34 @@ export function createSeedDatabase(): AwardDatabase {
         innovationTitle: 'Gerakan Masjid Mandiri & Manajemen ZISWAF Digital Terintegrasi',
         materialType: 'Link',
         materialUrl: 'https://inovasi.wahdahmakassar.org/masjid-mandiri-2026',
-        notes: 'Kolaborasi aktif 42 masjid binaan, Baznas Kota, dan koperasi syariah berbasis QRIS terpusat.',
+        notes: 'Kolaborasi aktif 42 masjid binaan, Baznas Kota Makassar, dan koperasi syariah berbasis QRIS terpusat.',
         submittedAt: '2026-11-08T10:30:00.000Z',
         updatedAt: now,
       },
       {
+        id: 'part-5',
+        awardCategory: 'KOLABORASI',
+        entityId: 'dpw-kaltim',
+        entityType: 'DPW',
+        entityName: 'DPW Wahdah Islamiyah Kalimantan Timur',
+        province: 'Kalimantan Timur',
+        innovationTitle: 'Sinergi Pendidikan Karakter Terpadu & Beasiswa Yatim Nusantara',
+        materialType: 'Link',
+        materialUrl: 'https://kaltim.wahdah.or.id/beasiswa-nusantara',
+        notes: 'Menjangkau wilayah penyangga IKN melalui kemitraan sekolah Islam terpadu dan donatur korporasi.',
+        submittedAt: '2026-11-09T11:10:00.000Z',
+        updatedAt: now,
+      },
+
+      // === KATEGORI 2: INOVASI MANDIRI ===
+      {
         id: 'part-3',
+        awardCategory: 'INOVASI_MANDIRI',
         entityId: 'dpw-jakarta',
         entityType: 'DPW',
         entityName: 'DPW Wahdah Islamiyah DKI Jakarta',
         province: 'DKI Jakarta',
-        innovationTitle: 'Hub Kolaborasi Dakwah Digital & Inkubator Ekonomi Pemuda',
+        innovationTitle: 'Hub Dakwah Digital & Inkubator Kemandirian Ekonomi Pemuda',
         materialType: 'Video',
         materialUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
         materials: [
@@ -158,12 +211,13 @@ export function createSeedDatabase(): AwardDatabase {
             url: 'https://jakarta.wahdah.or.id/inkubator-pemuda',
           },
         ],
-        notes: 'Inkubasi 120 UMKM binaan dan produksi konten dakwah multi-platform dengan jangkauan nasional.',
+        notes: 'Inkubasi 120 UMKM binaan mandiri dan produksi konten dakwah multi-platform dengan pembiayaan swadaya.',
         submittedAt: '2026-11-08T13:20:00.000Z',
         updatedAt: now,
       },
       {
         id: 'part-4',
+        awardCategory: 'INOVASI_MANDIRI',
         entityId: 'dpd-gowa',
         entityType: 'DPD',
         entityName: 'DPD Wahdah Islamiyah Kabupaten Gowa',
@@ -176,40 +230,29 @@ export function createSeedDatabase(): AwardDatabase {
         updatedAt: now,
       },
       {
-        id: 'part-5',
-        entityId: 'dpw-kaltim',
-        entityType: 'DPW',
-        entityName: 'DPW Wahdah Islamiyah Kalimantan Timur',
-        province: 'Kalimantan Timur',
-        innovationTitle: 'Sistem Pendidikan Karakter Terpadu & Beasiswa Yatim Nusantara',
-        materialType: 'Link',
-        materialUrl: 'https://kaltim.wahdah.or.id/beasiswa-nusantara',
-        notes: 'Menjangkau wilayah penyangga IKN melalui kemitraan sekolah Islam terpadu dan donatur korporasi.',
-        submittedAt: '2026-11-09T11:10:00.000Z',
-        updatedAt: now,
-      },
-      {
         id: 'part-6',
+        awardCategory: 'INOVASI_MANDIRI',
         entityId: 'dpd-balikpapan',
         entityType: 'DPD',
         entityName: 'DPD Wahdah Islamiyah Kota Balikpapan',
         province: 'Kalimantan Timur',
-        innovationTitle: 'Sinergi Logistik Kemanusiaan & Respon Cepat Bencana Regional',
+        innovationTitle: 'Sistem Logistik Kemanusiaan & Respon Cepat Bencana Regional',
         materialType: 'Video',
         materialUrl: 'https://drive.google.com/file/d/balikpapan-logistik-2026/view',
-        notes: 'Gudang logistik relawan siaga bencana dengan pelacakan distribusi bantuan secara terbuka.',
+        notes: 'Gudang logistik relawan siaga bencana dengan pelacakan distribusi bantuan secara mandiri dan terbuka.',
         submittedAt: '2026-11-09T15:00:00.000Z',
         updatedAt: now,
       },
     ],
 
     scores: [
-      // part-1: DPW Sulsel (Rank 1, ~92.18)
+      // === NILAI KOLABORASI ===
+      // part-1: DPW Sulsel (Rank #1 Kolaborasi, ~92.18)
       {
         id: 'score-p1-ja',
         participantId: 'part-1',
         judgeId: 'judge-a',
-        scores: { 'ind-1': 94, 'ind-2': 91, 'ind-3': 90 },
+        scores: { 'kol-1': 94, 'kol-2': 91, 'kol-3': 90 },
         notes: 'Sinergi lintas 24 daerah sangat solid dan terukur dampaknya.',
         updatedAt: now,
       },
@@ -217,25 +260,25 @@ export function createSeedDatabase(): AwardDatabase {
         id: 'score-p1-jb',
         participantId: 'part-1',
         judgeId: 'judge-b',
-        scores: { 'ind-1': 92, 'ind-2': 93, 'ind-3': 92 },
-        notes: 'Model wakaf produktif sudah mandiri secara arus kas.',
+        scores: { 'kol-1': 92, 'kol-2': 93, 'kol-3': 92 },
+        notes: 'Model wakaf kolaboratif sudah mandiri secara arus kas.',
         updatedAt: now,
       },
       {
         id: 'score-p1-jc',
         participantId: 'part-1',
         judgeId: 'judge-c',
-        scores: { 'ind-1': 95, 'ind-2': 90, 'ind-3': 91 },
-        notes: 'Dokumentasi SOP sangat siap direplikasi secara nasional.',
+        scores: { 'kol-1': 95, 'kol-2': 90, 'kol-3': 91 },
+        notes: 'Dokumentasi MoU dan SOP sangat siap direplikasi secara nasional.',
         updatedAt: now,
       },
 
-      // part-2: DPD Makassar (Final Score = 87.87, Ind 40% = 36.80 -> Wins Tie-Breaker #2!)
+      // part-2: DPD Makassar (Kolaborasi: Final Score = 87.87, Ind 40% = 36.80 -> Rank #2 via Tie-Breaker)
       {
         id: 'score-p2-ja',
         participantId: 'part-2',
         judgeId: 'judge-a',
-        scores: { 'ind-1': 92, 'ind-2': 84, 'ind-3': 86 },
+        scores: { 'kol-1': 92, 'kol-2': 84, 'kol-3': 86 },
         notes: 'Kolaborasi 42 masjid dan otoritas zakat kota sangat menonjol.',
         updatedAt: now,
       },
@@ -243,96 +286,97 @@ export function createSeedDatabase(): AwardDatabase {
         id: 'score-p2-jb',
         participantId: 'part-2',
         judgeId: 'judge-b',
-        scores: { 'ind-1': 90, 'ind-2': 86, 'ind-3': 88 },
-        notes: 'Digitalisasi ZISWAF mempermudah transparansi laporan.',
+        scores: { 'kol-1': 90, 'kol-2': 86, 'kol-3': 88 },
+        notes: 'Digitalisasi ZISWAF mempermudah transparansi laporan mitra.',
         updatedAt: now,
       },
       {
         id: 'score-p2-jc',
         participantId: 'part-2',
         judgeId: 'judge-c',
-        scores: { 'ind-1': 94, 'ind-2': 82, 'ind-3': 86 },
+        scores: { 'kol-1': 94, 'kol-2': 82, 'kol-3': 86 },
         notes: 'Kemitraan eksternal kuat dan menjadi percontohan DPD.',
         updatedAt: now,
       },
 
-      // part-3: DPW DKI Jakarta (Final Score = 87.87, Ind 40% = 34.40 -> Rank #3 via Tie-Breaker!)
-      {
-        id: 'score-p3-ja',
-        participantId: 'part-3',
-        judgeId: 'judge-a',
-        scores: { 'ind-1': 85, 'ind-2': 92, 'ind-3': 86 },
-        notes: 'Inovasi digital sangat kreatif dengan jangkauan dakwah luas.',
-        updatedAt: now,
-      },
-      {
-        id: 'score-p3-jb',
-        participantId: 'part-3',
-        judgeId: 'judge-b',
-        scores: { 'ind-1': 87, 'ind-2': 90, 'ind-3': 87 },
-        notes: 'Inkubator UMKM pemuda memberikan dampak ekonomi nyata.',
-        updatedAt: now,
-      },
-      {
-        id: 'score-p3-jc',
-        participantId: 'part-3',
-        judgeId: 'judge-c',
-        scores: { 'ind-1': 86, 'ind-2': 92, 'ind-3': 85 },
-        notes: 'Perlu penguatan kolaborasi lintas lembaga pemerintah provinsi.',
-        updatedAt: now,
-      },
-
-      // part-4: DPD Gowa (Rank #4, 85.32)
-      {
-        id: 'score-p4-ja',
-        participantId: 'part-4',
-        judgeId: 'judge-a',
-        scores: { 'ind-1': 86, 'ind-2': 85, 'ind-3': 84 },
-        notes: 'Sinergi pesantren dan kelompok tani lokal berjalan baik.',
-        updatedAt: now,
-      },
-      {
-        id: 'score-p4-jb',
-        participantId: 'part-4',
-        judgeId: 'judge-b',
-        scores: { 'ind-1': 85, 'ind-2': 84, 'ind-3': 86 },
-        notes: 'Kemandirian pangan pesantren mulai terasa hasilnya.',
-        updatedAt: now,
-      },
-      {
-        id: 'score-p4-jc',
-        participantId: 'part-4',
-        judgeId: 'judge-c',
-        scores: { 'ind-1': 87, 'ind-2': 86, 'ind-3': 84 },
-        notes: 'Cocok direplikasi oleh pesantren binaan di wilayah lain.',
-        updatedAt: now,
-      },
-
-      // part-5: DPW Kaltim (2/3 Juri — awaiting Juri C)
+      // part-5: DPW Kaltim (Kolaborasi: Final Score = 87.87, Ind 40% = 34.40 -> Rank #3 via Tie-Breaker)
       {
         id: 'score-p5-ja',
         participantId: 'part-5',
         judgeId: 'judge-a',
-        scores: { 'ind-1': 84, 'ind-2': 82, 'ind-3': 85 },
-        notes: 'Program beasiswa yatim terstruktur rapi dengan mitra sekolah.',
+        scores: { 'kol-1': 85, 'kol-2': 92, 'kol-3': 86 },
+        notes: 'Dampak program beasiswa yatim sangat luas di wilayah penyangga IKN.',
         updatedAt: now,
       },
       {
         id: 'score-p5-jb',
         participantId: 'part-5',
         judgeId: 'judge-b',
-        scores: { 'ind-1': 83, 'ind-2': 84, 'ind-3': 84 },
-        notes: 'Dampak sosial di wilayah penyangga IKN cukup signifikan.',
+        scores: { 'kol-1': 87, 'kol-2': 90, 'kol-3': 87 },
+        notes: 'Keterlibatan mitra korporasi dan sekolah sangat terukur.',
+        updatedAt: now,
+      },
+      {
+        id: 'score-p5-jc',
+        participantId: 'part-5',
+        judgeId: 'judge-c',
+        scores: { 'kol-1': 86, 'kol-2': 92, 'kol-3': 85 },
+        notes: 'Perlu penguatan MoU lintas instansi pemerintah provinsi.',
         updatedAt: now,
       },
 
-      // part-6: DPD Balikpapan (1/3 Juri — awaiting Juri B & C)
+      // === NILAI INOVASI MANDIRI ===
+      // part-3: DPW DKI Jakarta (Rank #1 Inovasi Mandiri, 90.10)
+      {
+        id: 'score-p3-ja',
+        participantId: 'part-3',
+        judgeId: 'judge-a',
+        scores: { 'ino-1': 91, 'ino-2': 90, 'ino-3': 89 },
+        notes: 'Terobosan inkubator pemuda sangat orisinal dan berdaya saing.',
+        updatedAt: now,
+      },
+      {
+        id: 'score-p3-jb',
+        participantId: 'part-3',
+        judgeId: 'judge-b',
+        scores: { 'ino-1': 92, 'ino-2': 88, 'ino-3': 90 },
+        notes: 'Pendanaan unit UMKM binaan telah berputar mandiri.',
+        updatedAt: now,
+      },
+      {
+        id: 'score-p3-jc',
+        participantId: 'part-3',
+        judgeId: 'judge-c',
+        scores: { 'ino-1': 90, 'ino-2': 91, 'ino-3': 88 },
+        notes: 'Mudah diadaptasi DPW kota besar lainnya.',
+        updatedAt: now,
+      },
+
+      // part-4: DPD Gowa (Inovasi Mandiri, 2/3 Juri — awaiting Juri C)
+      {
+        id: 'score-p4-ja',
+        participantId: 'part-4',
+        judgeId: 'judge-a',
+        scores: { 'ino-1': 86, 'ino-2': 85, 'ino-3': 84 },
+        notes: 'Inovasi hidroponik pesantren memberikan kemandirian nyata.',
+        updatedAt: now,
+      },
+      {
+        id: 'score-p4-jb',
+        participantId: 'part-4',
+        judgeId: 'judge-b',
+        scores: { 'ino-1': 88, 'ino-2': 84, 'ino-3': 86 },
+        notes: 'Produksi pangan pesantren mulai menopang biaya operasional santri.',
+        updatedAt: now,
+      },
+
+      // part-6: DPD Balikpapan (Inovasi Mandiri, 1/3 Juri — awaiting Juri B & C)
       {
         id: 'score-p6-ja',
         participantId: 'part-6',
         judgeId: 'judge-a',
-        scores: { 'ind-1': 82, 'ind-2': 80, 'ind-3': 82 },
-        notes: 'Sistem logistik tanggap bencana sudah teruji di lapangan.',
+        scores: { 'ino-1': 84, 'ino-2': 82, 'ino-3': 80 },
+        notes: 'Aplikasi pelacakan logistik mandiri sudah teruji di lapangan.',
         updatedAt: now,
       },
     ],

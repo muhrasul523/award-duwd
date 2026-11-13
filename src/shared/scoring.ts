@@ -1,4 +1,5 @@
 import type {
+  AwardCategory,
   JudgeMatrixCell,
   JudgeScoreRecord,
   LeaderboardEntry,
@@ -8,6 +9,31 @@ import type {
   ParticipantSubmission,
   TieBreakerResolution,
 } from './types.ts';
+
+export function normalizeAwardCategory(input: unknown): AwardCategory {
+  const val = String(input || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+  if (val === 'INOVASI_MANDIRI' || val === 'INOVASI' || val === 'MANDIRI') {
+    return 'INOVASI_MANDIRI';
+  }
+  return 'KOLABORASI';
+}
+
+export function getAwardCategoryLabel(category: AwardCategory): string {
+  return category === 'INOVASI_MANDIRI' ? 'Inovasi Mandiri' : 'Kolaborasi';
+}
+
+export function getIndicatorsForCategory(
+  indicators: MasterIndicator[],
+  category: AwardCategory
+): MasterIndicator[] {
+  const norm = normalizeAwardCategory(category);
+  return indicators
+    .filter((ind) => normalizeAwardCategory(ind.awardCategory) === norm)
+    .sort((a, b) => a.order - b.order);
+}
 
 export function normalizeWhatsApp(input: string): string {
   const digits = input.replace(/\D/g, '');
@@ -77,18 +103,19 @@ export function computeJudgeTotalWeighted(
   return roundToTwo(sum);
 }
 
-export function computeLeaderboard(
-  participants: ParticipantSubmission[],
+function computeCategoryLeaderboard(
+  category: AwardCategory,
+  categoryParticipants: ParticipantSubmission[],
   judges: MasterJudge[],
-  indicators: MasterIndicator[],
+  categoryIndicators: MasterIndicator[],
   scores: JudgeScoreRecord[]
 ): LeaderboardEntry[] {
-  const sortedIndicators = [...indicators].sort((a, b) => a.order - b.order);
+  const sortedIndicators = [...categoryIndicators].sort((a, b) => a.order - b.order);
   const highestIndicator =
     [...sortedIndicators].sort((a, b) => b.weight - a.weight || a.order - b.order)[0] ??
     sortedIndicators[0];
 
-  const entries: LeaderboardEntry[] = participants.map((participant) => {
+  const entries: LeaderboardEntry[] = categoryParticipants.map((participant) => {
     const participantScores = scores.filter((s) => s.participantId === participant.id);
 
     const judgeMatrix: JudgeMatrixCell[] = judges.map((judge) => {
@@ -195,6 +222,7 @@ export function computeLeaderboard(
 
     return {
       rank: 0,
+      awardCategory: category,
       isTiedForRank: false,
       tieBreakerRule: 'NONE' as TieBreakerResolution,
       tieBreakerNote: null,
@@ -214,21 +242,17 @@ export function computeLeaderboard(
     };
   });
 
-  // Sort using the 4-tier tie-breaker rules
+  // Sort using the 4-tier tie-breaker rules strictly within this category
   entries.sort((a, b) => {
-    // 1. Nilai akhir tertinggi
     if (b.finalScore !== a.finalScore) {
       return b.finalScore - a.finalScore;
     }
-    // 2. Bandingkan nilai pada indikator dengan bobot tertinggi
     if (b.highestIndicatorWeightedScore !== a.highestIndicatorWeightedScore) {
       return b.highestIndicatorWeightedScore - a.highestIndicatorWeightedScore;
     }
-    // 3. Bandingkan rata-rata nilai murni seluruh juri pada indikator tersebut
     if (b.highestIndicatorAvgRawAllJudges !== a.highestIndicatorAvgRawAllJudges) {
       return b.highestIndicatorAvgRawAllJudges - a.highestIndicatorAvgRawAllJudges;
     }
-    // 4. Seri mutlak -> musyawarah dewan juri (stable sort by submittedAt)
     return a.participant.submittedAt.localeCompare(b.participant.submittedAt);
   });
 
@@ -295,4 +319,26 @@ export function computeLeaderboard(
   }
 
   return entries;
+}
+
+export function computeLeaderboard(
+  participants: ParticipantSubmission[],
+  judges: MasterJudge[],
+  indicators: MasterIndicator[],
+  scores: JudgeScoreRecord[]
+): LeaderboardEntry[] {
+  const categories: AwardCategory[] = ['KOLABORASI', 'INOVASI_MANDIRI'];
+  const allEntries: LeaderboardEntry[] = [];
+
+  for (const cat of categories) {
+    const catParticipants = participants.filter(
+      (p) => normalizeAwardCategory(p.awardCategory) === cat
+    );
+    const catIndicators = getIndicatorsForCategory(indicators, cat);
+    allEntries.push(
+      ...computeCategoryLeaderboard(cat, catParticipants, judges, catIndicators, scores)
+    );
+  }
+
+  return allEntries;
 }

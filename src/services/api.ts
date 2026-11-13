@@ -1,10 +1,13 @@
 import {
   computeLeaderboard,
   extractJudgeAccessCode,
+  getParticipantMaterials,
+  normalizeAwardCategory,
   normalizeWhatsApp,
 } from '../shared/scoring.ts';
 import { createSeedDatabase } from '../shared/seedData.ts';
 import type {
+  AwardCategory,
   AwardDatabase,
   BootstrapResponse,
   MasterJudge,
@@ -13,7 +16,7 @@ import type {
   ParticipantSubmission,
 } from '../shared/types.ts';
 
-const LOCAL_DB_KEY = 'wahdah_award_2026_local_db_v1';
+const LOCAL_DB_KEY = 'wahdah_award_2026_local_db_v2';
 const GAS_URL_KEY = 'wahdah_award_2026_gas_url_v1';
 
 export function getEnvAppsScriptUrl(): string {
@@ -79,17 +82,37 @@ function writeLocalDb(db: AwardDatabase) {
   }
 }
 
-function buildLocalBootstrap(db: AwardDatabase): BootstrapResponse {
+function normalizeBootstrapPayload(data: BootstrapResponse): BootstrapResponse {
+  const indicators = (data.indicators || []).map((ind) => ({
+    ...ind,
+    awardCategory: normalizeAwardCategory(ind.awardCategory),
+  }));
+  const participants = (data.participants || []).map((p) => ({
+    ...p,
+    awardCategory: normalizeAwardCategory(p.awardCategory),
+    materials: getParticipantMaterials(p),
+  }));
+  const judges = (data.judges || []).map((j) => ({ ...j, whatsapp: '' }));
+  const leaderboard = computeLeaderboard(
+    participants,
+    judges,
+    indicators,
+    data.scores || []
+  );
   return {
-    ...db,
-    judges: db.judges.map((j) => ({ ...j, whatsapp: '' })),
-    leaderboard: computeLeaderboard(
-      db.participants,
-      db.judges,
-      db.indicators,
-      db.scores
-    ),
+    ...data,
+    indicators,
+    participants,
+    judges,
+    leaderboard,
   };
+}
+
+function buildLocalBootstrap(db: AwardDatabase): BootstrapResponse {
+  return normalizeBootstrapPayload({
+    ...db,
+    leaderboard: [],
+  });
 }
 
 async function callAppsScriptGet<T>(url: string, action: string): Promise<T> {
@@ -164,7 +187,7 @@ export async function apiSetupSpreadsheet(url: string): Promise<BootstrapRespons
     'setupSpreadsheet',
     {}
   );
-  return res.bootstrap;
+  return normalizeBootstrapPayload(res.bootstrap);
 }
 
 async function tryJsonFetch<T>(
@@ -208,12 +231,13 @@ async function tryJsonFetch<T>(
 export async function apiBootstrap(): Promise<BootstrapResponse> {
   const gasUrl = getAppsScriptUrl();
   if (gasUrl) {
-    return callAppsScriptGet<BootstrapResponse>(gasUrl, 'bootstrap');
+    const res = await callAppsScriptGet<BootstrapResponse>(gasUrl, 'bootstrap');
+    return normalizeBootstrapPayload(res);
   }
 
   const remote = await tryJsonFetch<BootstrapResponse>('./api/bootstrap');
   if (remote.ok) {
-    return remote.data;
+    return normalizeBootstrapPayload(remote.data);
   }
   if (remote.unavailable) {
     return buildLocalBootstrap(readLocalDb());
@@ -298,6 +322,7 @@ export async function apiUploadFile(file: File): Promise<{
 }
 
 export interface ParticipantPayload {
+  awardCategory: AwardCategory;
   entityId: string;
   innovationTitle: string;
   materialType: MaterialType;
@@ -319,7 +344,7 @@ export async function apiCreateParticipant(
       'createParticipant',
       { ...payload }
     );
-    return res.bootstrap;
+    return normalizeBootstrapPayload(res.bootstrap);
   }
 
   const remote = await tryJsonFetch<{ bootstrap: BootstrapResponse }>(
@@ -331,7 +356,7 @@ export async function apiCreateParticipant(
     }
   );
   if (remote.ok) {
-    return remote.data.bootstrap;
+    return normalizeBootstrapPayload(remote.data.bootstrap);
   }
   if (!remote.unavailable) {
     throw new Error(remote.error);
@@ -359,6 +384,7 @@ export async function apiCreateParticipant(
 
   const next: ParticipantSubmission = {
     id: `part-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    awardCategory: normalizeAwardCategory(payload.awardCategory),
     entityId: entity.id,
     entityType: entity.type,
     entityName: entity.name,
@@ -389,7 +415,7 @@ export async function apiUpdateParticipant(
       'updateParticipant',
       { id, ...payload }
     );
-    return res.bootstrap;
+    return normalizeBootstrapPayload(res.bootstrap);
   }
 
   const remote = await tryJsonFetch<{ bootstrap: BootstrapResponse }>(
@@ -401,7 +427,7 @@ export async function apiUpdateParticipant(
     }
   );
   if (remote.ok) {
-    return remote.data.bootstrap;
+    return normalizeBootstrapPayload(remote.data.bootstrap);
   }
   if (!remote.unavailable) {
     throw new Error(remote.error);
@@ -432,6 +458,7 @@ export async function apiUpdateParticipant(
 
   db.participants[idx] = {
     ...existing,
+    awardCategory: normalizeAwardCategory(payload.awardCategory ?? existing.awardCategory),
     entityId: entity.id,
     entityType: entity.type,
     entityName: entity.name,
@@ -457,7 +484,7 @@ export async function apiDeleteParticipant(id: string): Promise<BootstrapRespons
       'deleteParticipant',
       { id }
     );
-    return res.bootstrap;
+    return normalizeBootstrapPayload(res.bootstrap);
   }
 
   const remote = await tryJsonFetch<{ bootstrap: BootstrapResponse }>(
@@ -465,7 +492,7 @@ export async function apiDeleteParticipant(id: string): Promise<BootstrapRespons
     { method: 'DELETE' }
   );
   if (remote.ok) {
-    return remote.data.bootstrap;
+    return normalizeBootstrapPayload(remote.data.bootstrap);
   }
   if (!remote.unavailable) {
     throw new Error(remote.error);
@@ -530,7 +557,7 @@ export async function apiSaveScores(payload: {
       'saveScores',
       payload
     );
-    return res.bootstrap;
+    return normalizeBootstrapPayload(res.bootstrap);
   }
 
   const remote = await tryJsonFetch<{ bootstrap: BootstrapResponse }>('./api/scores', {
@@ -539,7 +566,7 @@ export async function apiSaveScores(payload: {
     body: JSON.stringify(payload),
   });
   if (remote.ok) {
-    return remote.data.bootstrap;
+    return normalizeBootstrapPayload(remote.data.bootstrap);
   }
   if (!remote.unavailable) {
     throw new Error(remote.error);
@@ -579,14 +606,14 @@ export async function apiResetDemo(): Promise<BootstrapResponse> {
       'resetDemo',
       {}
     );
-    return res.bootstrap;
+    return normalizeBootstrapPayload(res.bootstrap);
   }
 
   const remote = await tryJsonFetch<{ bootstrap: BootstrapResponse }>('./api/reset-demo', {
     method: 'POST',
   });
   if (remote.ok) {
-    return remote.data.bootstrap;
+    return normalizeBootstrapPayload(remote.data.bootstrap);
   }
   if (!remote.unavailable) {
     throw new Error(remote.error);

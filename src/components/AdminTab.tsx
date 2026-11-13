@@ -4,6 +4,8 @@ import {
   ExternalLink,
   Eye,
   FileText,
+  Handshake,
+  Lightbulb,
   Link2,
   Loader2,
   Plus,
@@ -19,8 +21,14 @@ import {
   apiUpdateParticipant,
   apiUploadFile,
 } from '../services/api';
-import { getParticipantMaterials } from '../shared/scoring';
+import {
+  getAwardCategoryLabel,
+  getParticipantMaterials,
+  normalizeAwardCategory,
+} from '../shared/scoring';
+import { AWARD_CATEGORY_LIST } from '../shared/types';
 import type {
+  AwardCategory,
   BootstrapResponse,
   EntityType,
   MasterEntity,
@@ -44,6 +52,7 @@ export function AdminTab({
   onPreviewMaterial,
 }: AdminTabProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [awardCategory, setAwardCategory] = useState<AwardCategory>('KOLABORASI');
   const [entityType, setEntityType] = useState<EntityType>('DPW');
   const [entityId, setEntityId] = useState<string>('');
   const [innovationTitle, setInnovationTitle] = useState<string>('');
@@ -65,6 +74,7 @@ export function AdminTab({
 
   // List filters
   const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<'ALL' | AwardCategory>('ALL');
   const [listFilter, setListFilter] = useState<'ALL' | EntityType>('ALL');
   const [deleteTarget, setDeleteTarget] = useState<ParticipantSubmission | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -75,13 +85,27 @@ export function AdminTab({
     return entities.filter((e) => e.type === entityType);
   }, [entities, entityType]);
 
+  // Entities already registered within the selected award category
   const submittedEntityIds = useMemo(() => {
-    return new Set(participants.map((p) => p.entityId));
-  }, [participants]);
+    return new Set(
+      participants
+        .filter(
+          (p) =>
+            normalizeAwardCategory(p.awardCategory) === awardCategory && p.id !== editingId
+        )
+        .map((p) => p.entityId)
+    );
+  }, [participants, awardCategory, editingId]);
 
   const filteredParticipants = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return participants.filter((p) => {
+      if (
+        categoryFilter !== 'ALL' &&
+        normalizeAwardCategory(p.awardCategory) !== categoryFilter
+      ) {
+        return false;
+      }
       if (listFilter !== 'ALL' && p.entityType !== listFilter) return false;
       if (!q) return true;
       return (
@@ -90,10 +114,14 @@ export function AdminTab({
         p.innovationTitle.toLowerCase().includes(q)
       );
     });
-  }, [participants, listFilter, searchQuery]);
+  }, [participants, categoryFilter, listFilter, searchQuery]);
 
-  const resetForm = (nextType: EntityType = 'DPW') => {
+  const resetForm = (
+    nextCategory: AwardCategory = awardCategory,
+    nextType: EntityType = 'DPW'
+  ) => {
     setEditingId(null);
+    setAwardCategory(nextCategory);
     setEntityType(nextType);
     setEntityId('');
     setInnovationTitle('');
@@ -112,6 +140,7 @@ export function AdminTab({
 
   const handleEditClick = (p: ParticipantSubmission) => {
     setEditingId(p.id);
+    setAwardCategory(normalizeAwardCategory(p.awardCategory));
     setEntityType(p.entityType);
     setEntityId(p.entityId);
     setInnovationTitle(p.innovationTitle);
@@ -225,7 +254,7 @@ export function AdminTab({
       return;
     }
     if (!innovationTitle.trim()) {
-      setFeedback({ type: 'error', message: 'Judul inovasi wajib diisi.' });
+      setFeedback({ type: 'error', message: 'Judul karya / inovasi wajib diisi.' });
       return;
     }
 
@@ -252,6 +281,7 @@ export function AdminTab({
     try {
       const primary = finalMaterials[0];
       const payload = {
+        awardCategory,
         entityId,
         innovationTitle: innovationTitle.trim(),
         materialType: primary.type,
@@ -269,10 +299,11 @@ export function AdminTab({
 
       onDataUpdated(nextBootstrap);
       const actionLabel = editingId ? 'diperbarui' : 'ditambahkan';
-      resetForm(entityType);
+      const catName = getAwardCategoryLabel(awardCategory);
+      resetForm(awardCategory, entityType);
       setFeedback({
         type: 'success',
-        message: `Bahan inovasi peserta (${finalMaterials.length} bahan) berhasil ${actionLabel}.`,
+        message: `Bahan Award ${catName} (${finalMaterials.length} bahan) berhasil ${actionLabel}.`,
       });
     } catch (err) {
       setFeedback({
@@ -291,7 +322,7 @@ export function AdminTab({
       const nextBootstrap = await apiDeleteParticipant(deleteTarget.id);
       onDataUpdated(nextBootstrap);
       if (editingId === deleteTarget.id) {
-        resetForm(entityType);
+        resetForm(awardCategory, entityType);
       }
       setDeleteTarget(null);
     } catch (err) {
@@ -316,13 +347,13 @@ export function AdminTab({
               {editingId ? 'Perbarui Bahan Peserta' : 'Input Bahan Peserta'}
             </h2>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              Formulir pendaftaran dan unggah berkas inovasi oleh Admin Dewan Pimpinan Pusat Wahdah Islamiyah.
+              Formulir pendaftaran dan unggah berkas oleh Admin Dewan Pimpinan Pusat Wahdah Islamiyah.
             </p>
           </div>
           {editingId && (
             <button
               type="button"
-              onClick={() => resetForm(entityType)}
+              onClick={() => resetForm(awardCategory, entityType)}
               className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-900 px-2.5 py-1.5 rounded-lg hover:bg-slate-900/5 transition whitespace-nowrap shrink-0"
             >
               <X className="w-3.5 h-3.5" />
@@ -332,6 +363,40 @@ export function AdminTab({
         </div>
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-5">
+          {/* Jenis Kategori Award */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-2">
+              Kategori Award yang Diikuti
+            </label>
+            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-gradient-to-r from-[#07525E]/[0.06] via-[#0C7A89]/[0.06] to-[#D88B15]/[0.08] border border-slate-200/70">
+              {AWARD_CATEGORY_LIST.map((cat) => {
+                const isSelected = awardCategory === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      setAwardCategory(cat.id);
+                      setFeedback(null);
+                    }}
+                    className={`inline-flex items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-xl text-xs font-semibold transition whitespace-nowrap ${
+                      isSelected
+                        ? 'bg-gradient-to-r from-[#D88B15] to-[#B6720B] text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {cat.id === 'KOLABORASI' ? (
+                      <Handshake className="w-3.5 h-3.5 shrink-0" />
+                    ) : (
+                      <Lightbulb className="w-3.5 h-3.5 shrink-0" />
+                    )}
+                    <span>{cat.shortLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Jenis Entitas */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-2">
@@ -375,14 +440,18 @@ export function AdminTab({
           {/* Judul Inovasi */}
           <div>
             <label htmlFor="innovation-title" className="block text-xs font-semibold text-slate-700 mb-2">
-              Judul Inovasi
+              Judul Karya / Program {getAwardCategoryLabel(awardCategory)}
             </label>
             <input
               id="innovation-title"
               type="text"
               value={innovationTitle}
               onChange={(e) => setInnovationTitle(e.target.value)}
-              placeholder="Contoh: Ekosistem Wakaf Produktif & Layanan Ummat"
+              placeholder={
+                awardCategory === 'KOLABORASI'
+                  ? 'Contoh: Sinergi Wakaf Produktif Lintas Lembaga'
+                  : 'Contoh: Inkubator Kemandirian Ekonomi Pemuda'
+              }
               className="w-full rounded-xl bg-white/95 border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition"
             />
           </div>
@@ -589,29 +658,55 @@ export function AdminTab({
 
       {/* Daftar Bahan Peserta Terdaftar */}
       <section className="lg:col-span-7 glass-panel rounded-3xl p-4 sm:p-7">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 sm:pb-5 border-b border-slate-200/70">
-          <div>
-            <h2 className="text-base sm:text-lg font-bold text-[#07525E]">
-              Daftar Bahan Peserta Terdaftar
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5 tabular-nums">
-              Total {participants.length} entitas telah mengumpulkan berkas inovasi
-            </p>
+        <div className="flex flex-col gap-3.5 pb-4 sm:pb-5 border-b border-slate-200/70">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-[#07525E]">
+                Daftar Bahan Peserta Terdaftar
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5 tabular-nums">
+                Total {participants.length} karya terdaftar di kedua kategori
+              </p>
+            </div>
+
+            <div className="inline-flex items-center p-1 rounded-xl bg-slate-900/[0.05] border border-slate-200/70 self-start">
+              {(['ALL', 'DPW', 'DPD'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setListFilter(tab)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+                    listFilter === tab
+                      ? 'bg-gradient-to-r from-[#0C7A89] to-[#07525E] text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {tab === 'ALL' ? 'Semua' : tab}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="inline-flex items-center p-1 rounded-xl bg-slate-900/[0.05] border border-slate-200/70 self-start">
-            {(['ALL', 'DPW', 'DPD'] as const).map((tab) => (
+          {/* Category Filter Bar */}
+          <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-slate-900/[0.04] border border-slate-200/70 self-start">
+            {(
+              [
+                { id: 'ALL', label: 'Semua Kategori' },
+                { id: 'KOLABORASI', label: 'Award Kolaborasi' },
+                { id: 'INOVASI_MANDIRI', label: 'Award Inovasi Mandiri' },
+              ] as const
+            ).map((cat) => (
               <button
-                key={tab}
+                key={cat.id}
                 type="button"
-                onClick={() => setListFilter(tab)}
+                onClick={() => setCategoryFilter(cat.id)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
-                  listFilter === tab
-                    ? 'bg-gradient-to-r from-[#0C7A89] to-[#07525E] text-white shadow-xs'
+                  categoryFilter === cat.id
+                    ? 'bg-gradient-to-r from-[#D88B15] to-[#B6720B] text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                {tab === 'ALL' ? 'Semua' : tab}
+                {cat.label}
               </button>
             ))}
           </div>
@@ -643,6 +738,7 @@ export function AdminTab({
           ) : (
             filteredParticipants.map((p) => {
               const mats = getParticipantMaterials(p);
+              const catLabel = getAwardCategoryLabel(p.awardCategory);
               return (
                 <article
                   key={p.id}
@@ -651,6 +747,8 @@ export function AdminTab({
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 font-medium">
+                        <span className="font-bold text-[#07525E]">{catLabel}</span>
+                        <span aria-hidden="true">·</span>
                         <span className="font-bold text-[#0C7A89]">{p.entityType}</span>
                         <span aria-hidden="true">·</span>
                         <span>{p.province}</span>
@@ -734,7 +832,7 @@ export function AdminTab({
             <p className="mt-2 text-xs text-slate-600 leading-relaxed">
               Anda akan menghapus pengajuan dari{' '}
               <span className="font-semibold text-slate-900">{deleteTarget.entityName}</span>{' '}
-              beserta seluruh nilai juri yang terkait. Tindakan ini tidak dapat dibatalkan.
+              (Kategori {getAwardCategoryLabel(deleteTarget.awardCategory)}) beserta seluruh nilai juri yang terkait. Tindakan ini tidak dapat dibatalkan.
             </p>
             <div className="mt-6 flex items-center justify-end gap-2.5">
               <button

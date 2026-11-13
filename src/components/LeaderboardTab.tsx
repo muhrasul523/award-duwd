@@ -5,13 +5,22 @@ import {
   Download,
   ExternalLink,
   Eye,
+  Handshake,
+  Lightbulb,
   Loader2,
   Scale,
   Search,
   Trophy,
 } from 'lucide-react';
-import { getParticipantMaterials } from '../shared/scoring';
+import {
+  getAwardCategoryLabel,
+  getIndicatorsForCategory,
+  getParticipantMaterials,
+  normalizeAwardCategory,
+} from '../shared/scoring';
+import { AWARD_CATEGORY_LIST } from '../shared/types';
 import type {
+  AwardCategory,
   EntityType,
   LeaderboardEntry,
   MasterIndicator,
@@ -108,18 +117,43 @@ export function LeaderboardTab({
   onOpenDetail,
   onPreviewMaterial,
 }: LeaderboardTabProps) {
+  const [selectedCategory, setSelectedCategory] = useState<AwardCategory>('KOLABORASI');
   const [entityFilter, setEntityFilter] = useState<'ALL' | EntityType>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [isExporting, setIsExporting] = useState(false);
 
+  const categoryLeaderboard = useMemo(
+    () =>
+      leaderboard.filter(
+        (entry) => normalizeAwardCategory(entry.awardCategory) === selectedCategory
+      ),
+    [leaderboard, selectedCategory]
+  );
+
+  const categoryCounts = useMemo(() => {
+    return {
+      KOLABORASI: leaderboard.filter(
+        (e) => normalizeAwardCategory(e.awardCategory) === 'KOLABORASI'
+      ).length,
+      INOVASI_MANDIRI: leaderboard.filter(
+        (e) => normalizeAwardCategory(e.awardCategory) === 'INOVASI_MANDIRI'
+      ).length,
+    };
+  }, [leaderboard]);
+
+  const categoryIndicators = useMemo(
+    () => getIndicatorsForCategory(indicators, selectedCategory),
+    [indicators, selectedCategory]
+  );
+
   const highestIndicator = useMemo(
-    () => [...indicators].sort((a, b) => b.weight - a.weight || a.order - b.order)[0],
-    [indicators]
+    () => [...categoryIndicators].sort((a, b) => b.weight - a.weight || a.order - b.order)[0],
+    [categoryIndicators]
   );
 
   const tiedFinalScoreKeys = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const entry of leaderboard) {
+    for (const entry of categoryLeaderboard) {
       if (entry.finalScore <= 0) continue;
       const key = entry.finalScore.toFixed(2);
       counts.set(key, (counts.get(key) ?? 0) + 1);
@@ -129,11 +163,11 @@ export function LeaderboardTab({
       if (cnt > 1) tied.add(key);
     }
     return tied;
-  }, [leaderboard]);
+  }, [categoryLeaderboard]);
 
   const filteredLeaderboard = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return leaderboard.filter((entry) => {
+    return categoryLeaderboard.filter((entry) => {
       if (entityFilter !== 'ALL' && entry.participant.entityType !== entityFilter) {
         return false;
       }
@@ -144,12 +178,16 @@ export function LeaderboardTab({
         entry.participant.innovationTitle.toLowerCase().includes(q)
       );
     });
-  }, [leaderboard, entityFilter, searchQuery]);
+  }, [categoryLeaderboard, entityFilter, searchQuery]);
+
+  const activeCategoryMeta =
+    AWARD_CATEGORY_LIST.find((c) => c.id === selectedCategory) ?? AWARD_CATEGORY_LIST[0];
 
   const handleExportCsv = () => {
     setIsExporting(true);
     try {
       const header = [
+        'Kategori Award',
         'Peringkat',
         'Jenis Entitas',
         'Nama Entitas',
@@ -165,6 +203,7 @@ export function LeaderboardTab({
       const rows = filteredLeaderboard.map((entry) => {
         const mats = getParticipantMaterials(entry.participant);
         return [
+          getAwardCategoryLabel(entry.awardCategory),
           String(entry.rank),
           entry.participant.entityType,
           entry.participant.entityName,
@@ -187,7 +226,8 @@ export function LeaderboardTab({
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'rekap-peringkat-award-wahdah-2026.csv';
+      const slug = selectedCategory === 'INOVASI_MANDIRI' ? 'inovasi-mandiri' : 'kolaborasi';
+      link.download = `rekap-peringkat-${slug}-2026.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -201,13 +241,72 @@ export function LeaderboardTab({
     <div className="space-y-5 sm:space-y-6">
       {/* Main Leaderboard Card */}
       <section className="glass-panel rounded-3xl p-4 sm:p-7">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-4 sm:pb-5 border-b border-slate-200/70">
+        {/* Category Switcher Banner (Separate Rankings for 2 Award Categories) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-5 border-b border-slate-200/70">
+          {AWARD_CATEGORY_LIST.map((cat) => {
+            const isSelected = selectedCategory === cat.id;
+            const count = categoryCounts[cat.id];
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`text-left rounded-2xl p-4 border transition flex items-start gap-3.5 ${
+                  isSelected
+                    ? 'bg-gradient-to-r from-[#07525E] via-[#096472] to-[#0C7A89] text-white border-transparent shadow-md'
+                    : 'bg-gradient-to-br from-white/90 to-[#F5FAFB]/85 border-slate-200/80 text-slate-800 hover:border-[#0C7A89]/40'
+                }`}
+              >
+                <span
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    isSelected
+                      ? 'bg-white/15 text-amber-200'
+                      : 'bg-gradient-to-br from-[#0C7A89]/15 to-[#D88B15]/10 text-[#07525E]'
+                  }`}
+                >
+                  {cat.id === 'KOLABORASI' ? (
+                    <Handshake className="w-5 h-5" />
+                  ) : (
+                    <Lightbulb className="w-5 h-5" />
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm sm:text-base font-extrabold tracking-tight">
+                      {cat.label}
+                    </span>
+                    <span
+                      className={`text-xs font-mono tabular-nums font-bold shrink-0 ${
+                        isSelected ? 'text-amber-200' : 'text-[#0C7A89]'
+                      }`}
+                    >
+                      {count} Peserta
+                    </span>
+                  </div>
+                  <p
+                    className={`mt-1 text-[11px] leading-relaxed ${
+                      isSelected ? 'text-white/80' : 'text-slate-500'
+                    }`}
+                  >
+                    {cat.description}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Category Header + Filter + Export */}
+        <div className="pt-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-4 sm:pb-5 border-b border-slate-200/70">
           <div>
             <h2 className="text-lg sm:text-xl font-bold text-[#07525E]">
-              Peringkat &amp; Rekapitulasi Skor Real-Time
+              Peringkat {activeCategoryMeta.label}
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              Pemeringkatan otomatis berdasarkan nilai akhir terbobot dan aturan tie-breaker Dewan Juri.
+              Bobot indikator kategori ini:{' '}
+              <span className="font-mono font-semibold text-[#07525E]">
+                {categoryIndicators.map((ind) => `${ind.weight}%`).join(' · ') || '—'}
+              </span>
             </p>
           </div>
 
@@ -253,7 +352,7 @@ export function LeaderboardTab({
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari peringkat entitas, provinsi, atau judul inovasi..."
+              placeholder={`Cari peringkat ${activeCategoryMeta.shortLabel}...`}
               className="w-full rounded-xl bg-white/95 border border-slate-200 pl-10 pr-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0C7A89]/30 focus:border-[#0C7A89] transition"
             />
           </div>
@@ -261,7 +360,8 @@ export function LeaderboardTab({
           <div className="text-xs text-slate-500 tabular-nums">
             Menampilkan{' '}
             <span className="font-semibold text-slate-800">{filteredLeaderboard.length}</span> dari{' '}
-            <span className="font-semibold text-slate-800">{leaderboard.length}</span> peserta
+            <span className="font-semibold text-slate-800">{categoryLeaderboard.length}</span>{' '}
+            peserta {activeCategoryMeta.shortLabel}
           </div>
         </div>
 
@@ -269,10 +369,10 @@ export function LeaderboardTab({
         {filteredLeaderboard.length === 0 ? (
           <div className="mt-5 rounded-2xl border border-slate-200/80 bg-white/80 p-10 text-center">
             <p className="text-sm font-semibold text-slate-700">
-              Data peringkat tidak ditemukan.
+              Belum ada peserta pada kategori {activeCategoryMeta.label}.
             </p>
             <p className="text-xs text-slate-500 mt-1">
-              Coba ubah filter kategori entitas atau kata kunci pencarian.
+              Ubah filter pencarian atau tambahkan peserta melalui tab Input Bahan.
             </p>
           </div>
         ) : (
@@ -391,7 +491,7 @@ export function LeaderboardTab({
                   <tr className="border-b border-slate-200/80 bg-gradient-to-r from-[#07525E]/[0.05] via-[#0C7A89]/[0.04] to-[#D88B15]/[0.05] text-xs font-semibold text-slate-600">
                     <th className="py-3.5 px-4 w-24">Peringkat</th>
                     <th className="py-3.5 px-4">Entitas &amp; Wilayah</th>
-                    <th className="py-3.5 px-4">Judul Inovasi</th>
+                    <th className="py-3.5 px-4">Judul Karya / Inovasi</th>
                     <th className="py-3.5 px-4">Bahan</th>
                     <th className="py-3.5 px-4 w-44">Progress Juri</th>
                     <th className="py-3.5 px-4 text-right w-32">Nilai Akhir</th>
@@ -533,19 +633,20 @@ export function LeaderboardTab({
         )}
       </section>
 
-      {/* Transparent Tie-Breaker Rules Card */}
+      {/* Transparent Tie-Breaker Rules Card (Dynamic for Active Category) */}
       <section className="glass-panel rounded-3xl p-4 sm:p-6">
         <div className="flex items-center gap-2.5">
           <Award className="w-4 h-4 text-[#D88B15]" />
           <h3 className="text-sm font-bold text-[#07525E]">
-            Aturan Penentuan Pemenang &amp; Tie-Breaker Otomatis
+            Aturan Tie-Breaker Kategori {activeCategoryMeta.shortLabel}
           </h3>
         </div>
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-xs">
           <div className="rounded-2xl bg-gradient-to-br from-white/90 to-[#F2F9FA]/85 border border-slate-200/80 p-4">
             <div className="font-bold text-[#0C7A89]">01. Nilai Akhir Tertinggi</div>
             <p className="mt-1 text-slate-600 leading-relaxed">
-              Peringkat utama ditentukan dari rata-rata total nilai terbobot tertinggi seluruh juri penilai.
+              Peringkat utama ditentukan dari rata-rata total nilai terbobot tertinggi pada kategori{' '}
+              {activeCategoryMeta.shortLabel}.
             </p>
           </div>
           <div className="rounded-2xl bg-gradient-to-br from-white/90 to-[#F2F9FA]/85 border border-slate-200/80 p-4">
@@ -553,7 +654,7 @@ export function LeaderboardTab({
             <p className="mt-1 text-slate-600 leading-relaxed">
               Jika nilai akhir seri, sistem membandingkan nilai pada indikator bobot tertinggi (
               <span className="font-semibold text-slate-800">
-                {highestIndicator?.name ?? 'Kolaborasi Strategis'} · {highestIndicator?.weight ?? 40}%
+                {highestIndicator?.name ?? 'Indikator Utama'} · {highestIndicator?.weight ?? 40}%
               </span>
               ).
             </p>
@@ -561,7 +662,7 @@ export function LeaderboardTab({
           <div className="rounded-2xl bg-gradient-to-br from-white/90 to-[#F2F9FA]/85 border border-slate-200/80 p-4">
             <div className="font-bold text-[#0C7A89]">03. Rata-rata Nilai Murni Juri</div>
             <p className="mt-1 text-slate-600 leading-relaxed">
-              Jika masih seri, dibandingkan rata-rata nilai murni (0–100) dari keseluruhan Dewan Juri pada indikator tersebut.
+              Jika masih seri, dibandingkan rata-rata nilai murni (0–100) seluruh Dewan Juri pada indikator tersebut.
             </p>
           </div>
           <div className="rounded-2xl bg-gradient-to-br from-white/90 to-[#FDF8EE]/90 border border-slate-200/80 p-4">

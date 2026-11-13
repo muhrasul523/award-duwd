@@ -17,10 +17,14 @@ import {
 import {
   computeJudgeTotalWeighted,
   computeWeightedScore,
+  getAwardCategoryLabel,
+  getIndicatorsForCategory,
   getParticipantMaterials,
+  normalizeAwardCategory,
 } from '../shared/scoring';
 import { apiAuthJudge, apiSaveScores } from '../services/api';
 import type {
+  AwardCategory,
   BootstrapResponse,
   EntityType,
   JudgeScoreRecord,
@@ -58,6 +62,7 @@ export function JudgePortalTab({
   // Workspace state
   const [selectedParticipantId, setSelectedParticipantId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<'ALL' | AwardCategory>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'UNSCORED' | 'SCORED'>('ALL');
   const [entityFilter, setEntityFilter] = useState<'ALL' | EntityType>('ALL');
 
@@ -71,11 +76,6 @@ export function JudgePortalTab({
   } | null>(null);
 
   const scoringSectionRef = useRef<HTMLElement | null>(null);
-
-  const sortedIndicators = useMemo(
-    () => [...indicators].sort((a, b) => a.order - b.order),
-    [indicators]
-  );
 
   const judgeScoreMap = useMemo(() => {
     const map = new Map<string, JudgeScoreRecord>();
@@ -91,6 +91,12 @@ export function JudgePortalTab({
   const filteredParticipants = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return participants.filter((p) => {
+      if (
+        categoryFilter !== 'ALL' &&
+        normalizeAwardCategory(p.awardCategory) !== categoryFilter
+      ) {
+        return false;
+      }
       if (entityFilter !== 'ALL' && p.entityType !== entityFilter) return false;
       const isScored = judgeScoreMap.has(p.id);
       if (statusFilter === 'SCORED' && !isScored) return false;
@@ -102,7 +108,7 @@ export function JudgePortalTab({
         p.innovationTitle.toLowerCase().includes(q)
       );
     });
-  }, [participants, entityFilter, statusFilter, searchQuery, judgeScoreMap]);
+  }, [participants, categoryFilter, entityFilter, statusFilter, searchQuery, judgeScoreMap]);
 
   // Select first available participant automatically when entering workspace
   useEffect(() => {
@@ -118,6 +124,12 @@ export function JudgePortalTab({
     [participants, selectedParticipantId]
   );
 
+  // Indicators strictly matching the selected participant's award category
+  const activeIndicators = useMemo(() => {
+    if (!selectedParticipant) return [];
+    return getIndicatorsForCategory(indicators, selectedParticipant.awardCategory);
+  }, [indicators, selectedParticipant]);
+
   const selectedMaterials = useMemo(
     () => (selectedParticipant ? getParticipantMaterials(selectedParticipant) : []),
     [selectedParticipant]
@@ -128,17 +140,17 @@ export function JudgePortalTab({
     if (!activeJudge || !selectedParticipant) return;
     const existing = judgeScoreMap.get(selectedParticipant.id);
     const initial: Record<string, number> = {};
-    for (const ind of sortedIndicators) {
+    for (const ind of activeIndicators) {
       initial[ind.id] = existing?.scores[ind.id] ?? 80;
     }
     setDraftScores(initial);
     setDraftNotes(existing?.notes ?? '');
     setSaveFeedback(null);
-  }, [activeJudge, selectedParticipant, judgeScoreMap, sortedIndicators]);
+  }, [activeJudge, selectedParticipant, judgeScoreMap, activeIndicators]);
 
   const liveTotalWeighted = useMemo(
-    () => computeJudgeTotalWeighted(draftScores, sortedIndicators),
-    [draftScores, sortedIndicators]
+    () => computeJudgeTotalWeighted(draftScores, activeIndicators),
+    [draftScores, activeIndicators]
   );
 
   const performAccessCodeAuth = async (code: string) => {
@@ -154,9 +166,7 @@ export function JudgePortalTab({
       onJudgeAuthenticated(judge);
       setAccessCodeInput('');
     } catch (err) {
-      setAuthError(
-        err instanceof Error ? err.message : 'Kode akses juri tidak valid.'
-      );
+      setAuthError(err instanceof Error ? err.message : 'Kode akses juri tidak valid.');
     } finally {
       setIsAuthenticating(false);
     }
@@ -198,9 +208,10 @@ export function JudgePortalTab({
         notes: draftNotes,
       });
       onDataUpdated(nextBootstrap);
+      const catLabel = getAwardCategoryLabel(selectedParticipant.awardCategory);
       setSaveFeedback({
         type: 'success',
-        message: `Penilaian untuk ${selectedParticipant.entityName} berhasil disimpan (Total Terbobot: ${liveTotalWeighted.toFixed(2)}).`,
+        message: `Penilaian (${catLabel}) untuk ${selectedParticipant.entityName} berhasil disimpan (Total Terbobot: ${liveTotalWeighted.toFixed(2)}).`,
       });
     } catch (err) {
       setSaveFeedback({
@@ -311,7 +322,7 @@ export function JudgePortalTab({
             <span className="font-bold text-[#0C7A89]">{activeJudge.label}</span>
             <span aria-hidden="true">·</span>
             <span className="text-[#D88B15] font-semibold tabular-nums">
-              {scoredByActiveCount} / {participants.length} Peserta Dinilai
+              {scoredByActiveCount} / {participants.length} Karya Dinilai
             </span>
           </div>
           <div className="text-sm sm:text-base font-bold text-[#07525E] mt-0.5 break-words">
@@ -337,11 +348,11 @@ export function JudgePortalTab({
       {/* Main Split Workspace */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 items-start">
         {/* Left Column: Participant Selector */}
-        <aside className="lg:col-span-4 glass-panel rounded-3xl p-4 sm:p-5 space-y-4">
+        <aside className="lg:col-span-4 glass-panel rounded-3xl p-4 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-bold text-[#07525E]">Daftar Peserta</h2>
             <span className="text-xs font-mono tabular-nums text-slate-500">
-              {filteredParticipants.length} entitas
+              {filteredParticipants.length} karya
             </span>
           </div>
 
@@ -356,6 +367,30 @@ export function JudgePortalTab({
             />
           </div>
 
+          {/* Category Filter */}
+          <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-900/[0.05] text-[11px] font-semibold">
+            {(
+              [
+                { id: 'ALL', label: 'Semua' },
+                { id: 'KOLABORASI', label: 'Kolaborasi' },
+                { id: 'INOVASI_MANDIRI', label: 'Inovasi' },
+              ] as const
+            ).map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setCategoryFilter(cat.id)}
+                className={`py-1.5 px-2 rounded-lg transition whitespace-nowrap ${
+                  categoryFilter === cat.id
+                    ? 'bg-gradient-to-r from-[#0C7A89] to-[#07525E] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="inline-flex p-0.5 rounded-lg bg-slate-900/[0.05] text-[11px] font-semibold">
               {(['ALL', 'UNSCORED', 'SCORED'] as const).map((st) => (
@@ -365,7 +400,7 @@ export function JudgePortalTab({
                   onClick={() => setStatusFilter(st)}
                   className={`px-2.5 py-1 rounded-md transition whitespace-nowrap ${
                     statusFilter === st
-                      ? 'bg-gradient-to-r from-[#0C7A89] to-[#07525E] text-white shadow-xs'
+                      ? 'bg-white text-[#07525E] shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -401,9 +436,11 @@ export function JudgePortalTab({
               filteredParticipants.map((p) => {
                 const record = judgeScoreMap.get(p.id);
                 const isSelected = p.id === selectedParticipantId;
+                const pIndicators = getIndicatorsForCategory(indicators, p.awardCategory);
                 const savedTotal = record
-                  ? computeJudgeTotalWeighted(record.scores, sortedIndicators)
+                  ? computeJudgeTotalWeighted(record.scores, pIndicators)
                   : null;
+                const catLabel = getAwardCategoryLabel(p.awardCategory);
 
                 return (
                   <button
@@ -418,7 +455,7 @@ export function JudgePortalTab({
                   >
                     <div className="flex items-center justify-between gap-2 text-[11px] font-medium">
                       <span className="text-[#0C7A89] font-bold truncate">
-                        {p.entityType} · {p.province}
+                        {catLabel} · {p.entityType}
                       </span>
                       {savedTotal !== null ? (
                         <span className="inline-flex items-center gap-1 font-mono tabular-nums font-bold text-[#07525E] shrink-0">
@@ -462,6 +499,10 @@ export function JudgePortalTab({
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 font-medium">
+                      <span className="font-bold text-[#07525E]">
+                        Award {getAwardCategoryLabel(selectedParticipant.awardCategory)}
+                      </span>
+                      <span aria-hidden="true">·</span>
                       <span className="font-bold text-[#0C7A89]">
                         {selectedParticipant.entityType}
                       </span>
@@ -547,18 +588,21 @@ export function JudgePortalTab({
                 )}
               </div>
 
-              {/* Indicators Scoring Form */}
+              {/* Indicators Scoring Form (Dynamic per Award Category) */}
               <div className="space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                   <h3 className="text-sm font-bold text-[#07525E]">
-                    Input Nilai Murni Indikator (Skala 0 – 100)
+                    Indikator Kategori {getAwardCategoryLabel(selectedParticipant.awardCategory)} (Skala 0 – 100)
                   </h3>
                   <span className="text-xs text-slate-500">
-                    Konversi terbobot dihitung otomatis
+                    Bobot khusus kategori ini:{' '}
+                    <span className="font-mono font-semibold text-[#07525E]">
+                      {activeIndicators.map((i) => `${i.weight}%`).join(' · ')}
+                    </span>
                   </span>
                 </div>
 
-                {sortedIndicators.map((ind) => {
+                {activeIndicators.map((ind) => {
                   const raw = draftScores[ind.id] ?? 0;
                   const weighted = computeWeightedScore(raw, ind.weight);
 
@@ -666,7 +710,8 @@ export function JudgePortalTab({
               <div className="rounded-2xl bg-gradient-to-r from-[#07525E] via-[#096472] to-[#0C7A89] text-white p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm">
                 <div>
                   <div className="text-xs font-medium text-white/80">
-                    Total Nilai Terbobot ({activeJudge.label})
+                    Total Nilai Terbobot ({activeJudge.label} ·{' '}
+                    {getAwardCategoryLabel(selectedParticipant.awardCategory)})
                   </div>
                   <div className="mt-0.5 flex items-baseline gap-2">
                     <span className="text-2xl sm:text-3xl font-extrabold font-mono tabular-nums">

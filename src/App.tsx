@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   ClipboardList,
   FileUp,
+  Layers,
   Loader2,
   ShieldCheck,
   Trophy,
@@ -15,7 +16,7 @@ import { LeaderboardTab } from './components/LeaderboardTab';
 import { MaterialPreviewModal } from './components/MaterialPreviewModal';
 import { ScoreDetailModal } from './components/ScoreDetailModal';
 import { apiBootstrap, isUsingAppsScript } from './services/api';
-import { getParticipantMaterials } from './shared/scoring';
+import { getParticipantMaterials, normalizeAwardCategory } from './shared/scoring';
 import type {
   BootstrapResponse,
   LeaderboardEntry,
@@ -23,7 +24,7 @@ import type {
   ParticipantSubmission,
 } from './shared/types';
 
-type ActiveTab = 'admin' | 'judge' | 'leaderboard';
+type ActiveTab = 'leaderboard' | 'judge' | 'admin';
 
 const JUDGE_SESSION_KEY = 'wahdah_award_2026_judge';
 
@@ -110,30 +111,50 @@ export default function App() {
     if (!data) {
       return {
         totalParticipants: 0,
+        kolaborasiCount: 0,
+        inovasiCount: 0,
         dpwCount: 0,
         dpdCount: 0,
         completedEvaluations: 0,
         expectedEvaluations: 0,
-        leaderName: '—',
-        leaderScore: '0.00',
+        kolLeaderName: '—',
+        kolLeaderScore: '0.00',
+        inoLeaderName: '—',
+        inoLeaderScore: '0.00',
       };
     }
 
     const totalParticipants = data.participants.length;
+    const kolaborasiCount = data.participants.filter(
+      (p) => normalizeAwardCategory(p.awardCategory) === 'KOLABORASI'
+    ).length;
+    const inovasiCount = data.participants.filter(
+      (p) => normalizeAwardCategory(p.awardCategory) === 'INOVASI_MANDIRI'
+    ).length;
     const dpwCount = data.participants.filter((p) => p.entityType === 'DPW').length;
     const dpdCount = data.participants.filter((p) => p.entityType === 'DPD').length;
     const expectedEvaluations = totalParticipants * data.judges.length;
     const completedEvaluations = data.scores.length;
-    const top = data.leaderboard[0];
+
+    const topKol = data.leaderboard.find(
+      (e) => normalizeAwardCategory(e.awardCategory) === 'KOLABORASI'
+    );
+    const topIno = data.leaderboard.find(
+      (e) => normalizeAwardCategory(e.awardCategory) === 'INOVASI_MANDIRI'
+    );
 
     return {
       totalParticipants,
+      kolaborasiCount,
+      inovasiCount,
       dpwCount,
       dpdCount,
       completedEvaluations,
       expectedEvaluations,
-      leaderName: top ? top.participant.entityName : '—',
-      leaderScore: top ? top.finalScore.toFixed(2) : '0.00',
+      kolLeaderName: topKol ? topKol.participant.entityName : '—',
+      kolLeaderScore: topKol ? topKol.finalScore.toFixed(2) : '0.00',
+      inoLeaderName: topIno ? topIno.participant.entityName : '—',
+      inoLeaderScore: topIno ? topIno.finalScore.toFixed(2) : '0.00',
     };
   }, [data]);
 
@@ -154,21 +175,21 @@ export default function App() {
             Award Kolaborasi &amp; Inovasi 2026
           </a>
 
-          {/* Zone 2: Single-line Primary Navigation Links */}
+          {/* Zone 2: Single-line Primary Navigation Links (1. Peringkat, 2. Portal Juri, 3. Input Bahan) */}
           <nav
             className="hidden md:flex items-center gap-6 text-sm font-semibold"
             aria-label="Navigasi utama"
           >
             <button
               type="button"
-              onClick={() => setActiveTab('admin')}
+              onClick={() => setActiveTab('leaderboard')}
               className={`py-1.5 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
-                activeTab === 'admin'
+                activeTab === 'leaderboard'
                   ? 'border-[#0C7A89] text-[#07525E]'
                   : 'border-transparent text-slate-600 hover:text-[#07525E]'
               }`}
             >
-              Input Bahan
+              Peringkat &amp; Skor
             </button>
             <button
               type="button"
@@ -183,14 +204,14 @@ export default function App() {
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab('leaderboard')}
+              onClick={() => setActiveTab('admin')}
               className={`py-1.5 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
-                activeTab === 'leaderboard'
+                activeTab === 'admin'
                   ? 'border-[#0C7A89] text-[#07525E]'
                   : 'border-transparent text-slate-600 hover:text-[#07525E]'
               }`}
             >
-              Peringkat &amp; Skor
+              Input Bahan
             </button>
           </nav>
 
@@ -233,12 +254,12 @@ export default function App() {
                     Award Kolaborasi dan Inovasi Mandiri 2026
                   </h1>
                   <p className="mt-1.5 text-xs sm:text-sm text-slate-600 max-w-2xl leading-relaxed">
-                    Sistem terpadu pengumpulan karya inovasi DPW &amp; DPD, penilaian objektif berbasis indikator oleh Dewan Juri, dan rekapitulasi peringkat otomatis.
+                    Sistem terpadu pengumpulan karya kategori Kolaborasi dan Inovasi Mandiri DPW &amp; DPD, penilaian berbasis indikator khusus kategori, dan rekapitulasi peringkat terpisah secara otomatis.
                   </p>
                 </div>
               </div>
 
-              {/* 3-Tab Segmented Switcher inside Workspace */}
+              {/* 3-Tab Segmented Switcher inside Workspace (Order: 1. Peringkat, 2. Portal Juri, 3. Input Bahan) */}
               <div
                 className="grid grid-cols-3 gap-1 p-1.5 rounded-2xl bg-gradient-to-r from-[#07525E]/[0.06] via-[#0C7A89]/[0.06] to-[#D88B15]/[0.06] border border-slate-200/80 self-stretch lg:self-center w-full lg:w-auto shrink-0"
                 role="tablist"
@@ -247,17 +268,16 @@ export default function App() {
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={activeTab === 'admin'}
-                  onClick={() => setActiveTab('admin')}
+                  aria-selected={activeTab === 'leaderboard'}
+                  onClick={() => setActiveTab('leaderboard')}
                   className={`inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-3.5 py-2.5 rounded-xl text-[11px] sm:text-xs font-semibold transition whitespace-nowrap ${
-                    activeTab === 'admin'
+                    activeTab === 'leaderboard'
                       ? 'bg-gradient-to-r from-[#0C7A89] to-[#07525E] text-white shadow-sm'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <FileUp className="w-3.5 h-3.5 shrink-0" />
-                  <span className="sm:hidden">1. Bahan</span>
-                  <span className="hidden sm:inline">1. Input Bahan</span>
+                  <Trophy className="w-3.5 h-3.5 shrink-0" />
+                  <span>1. Peringkat</span>
                 </button>
 
                 <button
@@ -279,16 +299,17 @@ export default function App() {
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={activeTab === 'leaderboard'}
-                  onClick={() => setActiveTab('leaderboard')}
+                  aria-selected={activeTab === 'admin'}
+                  onClick={() => setActiveTab('admin')}
                   className={`inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-3.5 py-2.5 rounded-xl text-[11px] sm:text-xs font-semibold transition whitespace-nowrap ${
-                    activeTab === 'leaderboard'
+                    activeTab === 'admin'
                       ? 'bg-gradient-to-r from-[#0C7A89] to-[#07525E] text-white shadow-sm'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <Trophy className="w-3.5 h-3.5 shrink-0" />
-                  <span>3. Peringkat</span>
+                  <FileUp className="w-3.5 h-3.5 shrink-0" />
+                  <span className="sm:hidden">3. Bahan</span>
+                  <span className="hidden sm:inline">3. Input Bahan</span>
                 </button>
               </div>
             </div>
@@ -304,7 +325,7 @@ export default function App() {
                     Peserta Terdaftar
                   </div>
                   <div className="text-base sm:text-lg font-extrabold font-mono tabular-nums text-[#07525E]">
-                    {summaryStats.totalParticipants} Entitas
+                    {summaryStats.totalParticipants} Karya
                   </div>
                   <div className="text-[11px] text-slate-500 tabular-nums">
                     {summaryStats.dpwCount} DPW · {summaryStats.dpdCount} DPD
@@ -331,16 +352,18 @@ export default function App() {
 
               <div className="flex items-start gap-2.5 sm:gap-3 min-w-0">
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#D88B15]/22 to-[#D88B15]/8 text-[#D88B15] flex items-center justify-center shrink-0">
-                  <ShieldCheck className="w-4 h-4" />
+                  <Layers className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
                   <div className="text-[11px] sm:text-xs font-medium text-slate-500">
-                    Bobot Penilaian
+                    Kategori Lomba
                   </div>
                   <div className="text-base sm:text-lg font-extrabold font-mono tabular-nums text-[#07525E]">
-                    40% · 35% · 25%
+                    2 Kategori
                   </div>
-                  <div className="text-[11px] text-slate-500">Total akurasi bobot 100%</div>
+                  <div className="text-[11px] text-slate-500 tabular-nums">
+                    {summaryStats.kolaborasiCount} Kolaborasi · {summaryStats.inovasiCount} Inovasi
+                  </div>
                 </div>
               </div>
 
@@ -352,11 +375,11 @@ export default function App() {
                   <div className="text-[11px] sm:text-xs font-medium text-slate-500">
                     Skor Teratas
                   </div>
-                  <div className="text-base sm:text-lg font-extrabold font-mono tabular-nums text-[#D88B15]">
-                    {summaryStats.leaderScore}
+                  <div className="text-xs sm:text-sm font-extrabold font-mono tabular-nums text-[#D88B15] leading-snug">
+                    Kol {summaryStats.kolLeaderScore} · Ino {summaryStats.inoLeaderScore}
                   </div>
                   <div className="text-[11px] font-medium text-slate-600 truncate">
-                    {summaryStats.leaderName}
+                    {summaryStats.kolLeaderName}
                   </div>
                 </div>
               </div>
@@ -418,11 +441,11 @@ export default function App() {
                 exit={{ opacity: 0, y: -4 }}
                 transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
               >
-                {activeTab === 'admin' && (
-                  <AdminTab
-                    entities={data.entities}
-                    participants={data.participants}
-                    onDataUpdated={handleDataUpdated}
+                {activeTab === 'leaderboard' && (
+                  <LeaderboardTab
+                    leaderboard={data.leaderboard}
+                    indicators={data.indicators}
+                    onOpenDetail={(entry) => setSelectedDetailParticipantId(entry.participant.id)}
                     onPreviewMaterial={(p) => setPreviewState({ participant: p })}
                   />
                 )}
@@ -442,11 +465,11 @@ export default function App() {
                   />
                 )}
 
-                {activeTab === 'leaderboard' && (
-                  <LeaderboardTab
-                    leaderboard={data.leaderboard}
-                    indicators={data.indicators}
-                    onOpenDetail={(entry) => setSelectedDetailParticipantId(entry.participant.id)}
+                {activeTab === 'admin' && (
+                  <AdminTab
+                    entities={data.entities}
+                    participants={data.participants}
+                    onDataUpdated={handleDataUpdated}
                     onPreviewMaterial={(p) => setPreviewState({ participant: p })}
                   />
                 )}

@@ -8,10 +8,13 @@ import { createSeedDatabase } from './src/shared/seedData.ts';
 import {
   computeLeaderboard,
   extractJudgeAccessCode,
+  getIndicatorsForCategory,
   getParticipantMaterials,
+  normalizeAwardCategory,
   normalizeWhatsApp,
 } from './src/shared/scoring.ts';
 import type {
+  AwardCategory,
   AwardDatabase,
   BootstrapResponse,
   MaterialItem,
@@ -109,10 +112,19 @@ function sanitizeMaterials(
 }
 
 function buildBootstrapPayload(db: AwardDatabase): BootstrapResponse {
+  const normalizedIndicators = db.indicators.map((ind) => ({
+    ...ind,
+    awardCategory: normalizeAwardCategory(ind.awardCategory),
+  }));
+  const normalizedParticipants = db.participants.map((p) => ({
+    ...p,
+    awardCategory: normalizeAwardCategory(p.awardCategory),
+    materials: getParticipantMaterials(p),
+  }));
   const leaderboard = computeLeaderboard(
-    db.participants,
+    normalizedParticipants,
     db.judges,
-    db.indicators,
+    normalizedIndicators,
     db.scores
   );
   // Jangan ekspos nomor WhatsApp juri ke browser
@@ -120,12 +132,9 @@ function buildBootstrapPayload(db: AwardDatabase): BootstrapResponse {
     ...j,
     whatsapp: '',
   }));
-  const normalizedParticipants = db.participants.map((p) => ({
-    ...p,
-    materials: getParticipantMaterials(p),
-  }));
   return {
     ...db,
+    indicators: normalizedIndicators,
     participants: normalizedParticipants,
     judges: safeJudges,
     leaderboard,
@@ -188,6 +197,7 @@ async function startServer() {
   // Create participant submission
   app.post('/api/participants', (req, res) => {
     const {
+      awardCategory,
       entityId,
       innovationTitle,
       materialType,
@@ -197,6 +207,7 @@ async function startServer() {
       materials,
       notes,
     } = req.body as {
+      awardCategory?: AwardCategory;
       entityId?: string;
       innovationTitle?: string;
       materialType?: MaterialType;
@@ -236,6 +247,7 @@ async function startServer() {
     const now = new Date().toISOString();
     const newParticipant: ParticipantSubmission = {
       id: `part-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      awardCategory: normalizeAwardCategory(awardCategory),
       entityId: entity.id,
       entityType: entity.type,
       entityName: entity.name,
@@ -264,6 +276,7 @@ async function startServer() {
   app.put('/api/participants/:id', (req, res) => {
     const { id } = req.params;
     const {
+      awardCategory,
       entityId,
       innovationTitle,
       materialType,
@@ -273,6 +286,7 @@ async function startServer() {
       materials,
       notes,
     } = req.body as {
+      awardCategory?: AwardCategory;
       entityId?: string;
       innovationTitle?: string;
       materialType?: MaterialType;
@@ -313,6 +327,7 @@ async function startServer() {
     const existing = db.participants[index];
     db.participants[index] = {
       ...existing,
+      awardCategory: normalizeAwardCategory(awardCategory ?? existing.awardCategory),
       entityId: entity.id,
       entityType: entity.type,
       entityName: entity.name,
@@ -414,8 +429,12 @@ async function startServer() {
       return;
     }
 
+    const categoryIndicators = getIndicatorsForCategory(
+      db.indicators,
+      normalizeAwardCategory(participant.awardCategory)
+    );
     const validatedScores: Record<string, number> = {};
-    for (const ind of db.indicators) {
+    for (const ind of categoryIndicators) {
       const raw = Number(scores[ind.id]);
       if (!Number.isFinite(raw) || raw < 0 || raw > 100) {
         res.status(400).json({

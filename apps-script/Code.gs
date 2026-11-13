@@ -1,24 +1,21 @@
 /**
  * ============================================================================
  * BACKEND GOOGLE APPS SCRIPT — AWARD KOLABORASI DAN INOVASI MANDIRI 2026
- * Dewan Pimpinan Pusat Wahdah Islamiyah
+ * Dewan Pimpinan Pusat Wahdah Islamiyah (2 Kategori: Kolaborasi & Inovasi Mandiri)
  * ============================================================================
  *
- * CARA PASANG:
- * 1. Buka Google Spreadsheet baru (atau yang sudah disiapkan).
+ * CARA PASANG / PERBARUI:
+ * 1. Buka Google Spreadsheet Anda.
  * 2. Klik menu: Extensions (Ekstensi) > Apps Script.
- * 3. Hapus seluruh isi Code.gs bawaan, lalu tempelkan seluruh kode ini.
+ * 3. Hapus seluruh isi Code.gs lama, lalu tempelkan seluruh kode ini.
  * 4. Simpan (Ctrl+S).
- * 5. Pilih fungsi "setupSpreadsheet" pada toolbar atas lalu klik "Run" (Jalankan).
- *    Berikan izin akses Spreadsheet & Google Drive saat diminta.
- * 6. Buka sheet "Pengaturan" di Spreadsheet Anda, lalu tempelkan Link Folder
- *    Google Drive tujuan pada baris DRIVE_FOLDER_URL (kolom B).
- * 7. Kembali ke editor Apps Script, klik "Deploy" > "New deployment" (Deployment baru):
- *    - Type: Web app
- *    - Execute as: Me (Saya)
- *    - Who has access: Anyone (Siapa saja)
- * 8. Salin Web App URL (akhiran /exec) dan tempelkan ke menu "Koneksi Apps Script"
- *    di bagian bawah aplikasi web (atau ke VITE_APPS_SCRIPT_URL).
+ * 5. Pilih fungsi "setupSpreadsheet" (untuk sheet baru) atau "upgradeDuaKategori"
+ *    (jika Spreadsheet sebelumnya sudah berisi data 1 kategori) pada toolbar atas
+ *    lalu klik "Run" (Jalankan). Berikan izin akses Spreadsheet & Drive saat diminta.
+ * 6. Pastikan sel B2 (DRIVE_FOLDER_URL) pada sheet "Pengaturan" sudah berisi link
+ *    folder Google Drive tujuan unggahan berkas peserta.
+ * 7. Klik "Deploy" > "Manage deployments" > Edit (ikon pensil) > Version: "New version"
+ *    > "Deploy" (atau "New deployment" jika baru pertama kali).
  */
 
 var SHEET_NAMES = {
@@ -55,6 +52,23 @@ function normalizeWhatsApp_(input) {
   return digits;
 }
 
+function normalizeAwardCategory_(input) {
+  var raw = String(input || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+  if (raw === 'INOVASI_MANDIRI' || raw === 'INOVASI' || raw === 'MANDIRI') {
+    return 'INOVASI_MANDIRI';
+  }
+  return 'KOLABORASI';
+}
+
+function getAwardCategoryLabel_(category) {
+  return normalizeAwardCategory_(category) === 'INOVASI_MANDIRI'
+    ? 'Inovasi Mandiri'
+    : 'Kolaborasi';
+}
+
 function roundToTwo_(num) {
   return Math.round((Number(num) + 1e-12) * 100) / 100;
 }
@@ -86,6 +100,170 @@ function extractDriveFolderId_(urlOrId) {
 
   if (/^[a-zA-Z0-9_-]{15,}$/.test(raw)) return raw;
   return '';
+}
+
+function getDefaultIndicatorsRows_() {
+  return [
+    [
+      'kol-1',
+      1,
+      'Sinergi Lintas Lembaga & Pemerintah',
+      'Tingkat kolaborasi strategis bersama pemerintah daerah, lembaga mitra, masjid, serta unit amal usaha Wahdah Islamiyah.',
+      40,
+      'KOLABORASI',
+    ],
+    [
+      'kol-2',
+      2,
+      'Dampak & Jangkauan Program Bersama',
+      'Manfaat terukur bagi masyarakat dan kader hasil sinergi multipihak serta efektivitas pemanfaatan sumber daya bersama.',
+      35,
+      'KOLABORASI',
+    ],
+    [
+      'kol-3',
+      3,
+      'Tata Kelola Kemitraan & Keberlanjutan',
+      'Kejelasan MoU/SOP kolaborasi, pelaporan transparan, serta potensi replikasi kemitraan oleh DPW/DPD lain.',
+      25,
+      'KOLABORASI',
+    ],
+    [
+      'ino-1',
+      1,
+      'Orisinalitas & Kebaruan Solusi',
+      'Tingkat kreativitas, keunikan pendekatan atau teknologi, dan terobosan baru dalam menjawab tantangan dakwah dan ummat.',
+      45,
+      'INOVASI_MANDIRI',
+    ],
+    [
+      'ino-2',
+      2,
+      'Kemandirian Operasional & Pendanaan',
+      'Kemampuan entitas menopang program inovasi secara swadaya, berkelanjutan secara finansial, dan mandiri secara ekosistem.',
+      30,
+      'INOVASI_MANDIRI',
+    ],
+    [
+      'ino-3',
+      3,
+      'Efektivitas Implementasi & Replikasi',
+      'Hasil nyata di lapangan, kelengkapan dokumentasi SOP digital, serta kemudahan adopsi oleh DPW/DPD lain.',
+      25,
+      'INOVASI_MANDIRI',
+    ],
+  ];
+}
+
+/**
+ * Jalankan fungsi ini jika Spreadsheet sebelumnya sudah terisi struktur 1 kategori,
+ * untuk memperbarui header & Master_Indikator ke 2 kategori tanpa menghapus
+ * Pengaturan (DRIVE_FOLDER_URL), Master_Entitas, dan Master_Juri.
+ */
+function upgradeDuaKategori() {
+  var ss = getSpreadsheet_();
+
+  // 1. Pastikan header Master_Indikator memiliki kolom awardCategory
+  var indSheet = ensureSheet_(ss, SHEET_NAMES.INDICATORS, [
+    'id',
+    'order',
+    'name',
+    'description',
+    'weight',
+    'awardCategory',
+  ]);
+  var existingInds = readRecords_(indSheet);
+  var hasInovasi = false;
+  for (var i = 0; i < existingInds.length; i++) {
+    if (normalizeAwardCategory_(existingInds[i].awardCategory) === 'INOVASI_MANDIRI') {
+      hasInovasi = true;
+      break;
+    }
+  }
+  if (!hasInovasi) {
+    if (indSheet.getLastRow() > 1) {
+      indSheet.getRange(2, 1, indSheet.getLastRow() - 1, indSheet.getLastColumn()).clearContent();
+    }
+    writeRows_(indSheet, getDefaultIndicatorsRows_());
+  }
+
+  // 2. Pastikan Peserta_Inovasi memiliki kolom materialsJson (kolom 15) & awardCategory (kolom 16)
+  var pSheet = ensureSheet_(ss, SHEET_NAMES.PARTICIPANTS, [
+    'id',
+    'entityId',
+    'entityType',
+    'entityName',
+    'province',
+    'innovationTitle',
+    'materialType',
+    'materialUrl',
+    'driveFileId',
+    'uploadedFileName',
+    'uploadedFileSize',
+    'notes',
+    'submittedAt',
+    'updatedAt',
+    'materialsJson',
+    'awardCategory',
+  ]);
+  if (pSheet.getLastRow() > 1) {
+    var pRange = pSheet.getRange(2, 16, pSheet.getLastRow() - 1, 1);
+    var pVals = pRange.getValues();
+    var pChanged = false;
+    for (var pr = 0; pr < pVals.length; pr++) {
+      if (String(pVals[pr][0] || '').trim() === '') {
+        pVals[pr][0] = 'KOLABORASI';
+        pChanged = true;
+      }
+    }
+    if (pChanged) {
+      pRange.setValues(pVals);
+    }
+  }
+
+  // 3. Pastikan Penilaian_Juri memiliki kolom awardCategory (kolom 13)
+  ensureSheet_(ss, SHEET_NAMES.SCORES, [
+    'id',
+    'participantId',
+    'judgeId',
+    'judgeLabel',
+    'entityName',
+    'scoresJson',
+    'ind_1_raw',
+    'ind_2_raw',
+    'ind_3_raw',
+    'totalWeighted',
+    'notes',
+    'updatedAt',
+    'awardCategory',
+  ]);
+
+  // 4. Perbarui header Rekap_Peringkat agar memuat Kategori Award
+  var lbSheet = ss.getSheetByName(SHEET_NAMES.LEADERBOARD);
+  if (lbSheet) {
+    var lbHeaders = [
+      'Peringkat',
+      'Kategori Award',
+      'Jenis',
+      'Entitas',
+      'Provinsi',
+      'Judul Inovasi',
+      'Tipe Bahan',
+      'Tautan Bahan',
+      'Progress Juri',
+      'Nilai Akhir',
+      'Indikator Bobot Tertinggi',
+      'Rata-rata Murni Juri',
+      'Keterangan Tie-Breaker',
+    ];
+    lbSheet.getRange(1, 1, 1, lbHeaders.length).setValues([lbHeaders]);
+    lbSheet
+      .getRange(1, 1, 1, lbHeaders.length)
+      .setBackground('#07525E')
+      .setFontColor('#FFFFFF')
+      .setFontWeight('bold');
+  }
+  syncLeaderboardSheet_(ss);
 }
 
 /**
@@ -192,38 +370,17 @@ function setupSpreadsheet() {
     ]);
   }
 
-  // 4. Master_Indikator
+  // 4. Master_Indikator (2 Kategori dengan indikator & bobot terpisah)
   var indicatorsSheet = ensureSheet_(ss, SHEET_NAMES.INDICATORS, [
     'id',
     'order',
     'name',
     'description',
     'weight',
+    'awardCategory',
   ]);
   if (indicatorsSheet.getLastRow() <= 1) {
-    writeRows_(indicatorsSheet, [
-      [
-        'ind-1',
-        1,
-        'Kolaborasi Strategis & Lintas Lembaga',
-        'Tingkat sinergi program bersama pemerintah daerah, lembaga mitra, masjid, serta unit amal usaha Wahdah Islamiyah.',
-        40,
-      ],
-      [
-        'ind-2',
-        2,
-        'Orisinalitas, Dampak & Kemandirian Inovasi',
-        'Kebaruan gagasan, manfaat terukur bagi masyarakat dan kader, serta kemandirian pendanaan dan operasional.',
-        35,
-      ],
-      [
-        'ind-3',
-        3,
-        'Replikasi, Keberlanjutan & Tata Kelola',
-        'Kesiapan SOP, dokumentasi digital, serta potensi duplikasi oleh DPW/DPD lain di seluruh Indonesia.',
-        25,
-      ],
-    ]);
+    writeRows_(indicatorsSheet, getDefaultIndicatorsRows_());
   }
 
   // 5. Peserta_Inovasi
@@ -243,6 +400,7 @@ function setupSpreadsheet() {
     'submittedAt',
     'updatedAt',
     'materialsJson',
+    'awardCategory',
   ]);
   if (participantsSheet.getLastRow() <= 1) {
     writeRows_(participantsSheet, [
@@ -258,7 +416,7 @@ function setupSpreadsheet() {
         '',
         '',
         '',
-        'Menghubungkan 24 DPD kabupaten/kota dalam satu dashboard aset wakaf produktif dan layanan kesehatan gratis.',
+        'Menghubungkan 24 DPD kabupaten/kota dan dinas kesehatan daerah dalam satu ekosistem layanan ummat.',
         '2026-11-08T08:15:00.000Z',
         now,
         JSON.stringify([
@@ -275,6 +433,7 @@ function setupSpreadsheet() {
             url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
           },
         ]),
+        'KOLABORASI',
       ],
       [
         'part-2',
@@ -288,10 +447,29 @@ function setupSpreadsheet() {
         '',
         '',
         '',
-        'Kolaborasi aktif 42 masjid binaan, Baznas Kota, dan koperasi syariah berbasis QRIS terpusat.',
+        'Kolaborasi aktif 42 masjid binaan, Baznas Kota Makassar, dan koperasi syariah berbasis QRIS terpusat.',
         '2026-11-08T10:30:00.000Z',
         now,
         '',
+        'KOLABORASI',
+      ],
+      [
+        'part-5',
+        'dpw-kaltim',
+        'DPW',
+        'DPW Wahdah Islamiyah Kalimantan Timur',
+        'Kalimantan Timur',
+        'Sinergi Pendidikan Karakter Terpadu & Beasiswa Yatim Nusantara',
+        'Link',
+        'https://kaltim.wahdah.or.id/beasiswa-nusantara',
+        '',
+        '',
+        '',
+        'Menjangkau wilayah penyangga IKN melalui kemitraan sekolah Islam terpadu dan donatur korporasi.',
+        '2026-11-09T11:10:00.000Z',
+        now,
+        '',
+        'KOLABORASI',
       ],
       [
         'part-3',
@@ -299,13 +477,13 @@ function setupSpreadsheet() {
         'DPW',
         'DPW Wahdah Islamiyah DKI Jakarta',
         'DKI Jakarta',
-        'Hub Kolaborasi Dakwah Digital & Inkubator Ekonomi Pemuda',
+        'Hub Dakwah Digital & Inkubator Kemandirian Ekonomi Pemuda',
         'Video',
         'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
         '',
         '',
         '',
-        'Inkubasi 120 UMKM binaan dan produksi konten dakwah multi-platform dengan jangkauan nasional.',
+        'Inkubasi 120 UMKM binaan mandiri dan produksi konten dakwah multi-platform dengan pembiayaan swadaya.',
         '2026-11-08T13:20:00.000Z',
         now,
         JSON.stringify([
@@ -322,6 +500,7 @@ function setupSpreadsheet() {
             url: 'https://jakarta.wahdah.or.id/inkubator-pemuda',
           },
         ]),
+        'INOVASI_MANDIRI',
       ],
       [
         'part-4',
@@ -339,23 +518,7 @@ function setupSpreadsheet() {
         '2026-11-09T07:45:00.000Z',
         now,
         '',
-      ],
-      [
-        'part-5',
-        'dpw-kaltim',
-        'DPW',
-        'DPW Wahdah Islamiyah Kalimantan Timur',
-        'Kalimantan Timur',
-        'Sistem Pendidikan Karakter Terpadu & Beasiswa Yatim Nusantara',
-        'Link',
-        'https://kaltim.wahdah.or.id/beasiswa-nusantara',
-        '',
-        '',
-        '',
-        'Menjangkau wilayah penyangga IKN melalui kemitraan sekolah Islam terpadu dan donatur korporasi.',
-        '2026-11-09T11:10:00.000Z',
-        now,
-        '',
+        'INOVASI_MANDIRI',
       ],
       [
         'part-6',
@@ -363,16 +526,17 @@ function setupSpreadsheet() {
         'DPD',
         'DPD Wahdah Islamiyah Kota Balikpapan',
         'Kalimantan Timur',
-        'Sinergi Logistik Kemanusiaan & Respon Cepat Bencana Regional',
+        'Sistem Logistik Kemanusiaan & Respon Cepat Bencana Regional',
         'Video',
         'https://drive.google.com/file/d/balikpapan-logistik-2026/view',
         '',
         '',
         '',
-        'Gudang logistik relawan siaga bencana dengan pelacakan distribusi bantuan secara terbuka.',
+        'Gudang logistik relawan siaga bencana dengan pelacakan distribusi bantuan secara mandiri dan terbuka.',
         '2026-11-09T15:00:00.000Z',
         now,
         '',
+        'INOVASI_MANDIRI',
       ],
     ]);
   }
@@ -391,35 +555,37 @@ function setupSpreadsheet() {
     'totalWeighted',
     'notes',
     'updatedAt',
+    'awardCategory',
   ]);
   if (scoresSheet.getLastRow() <= 1) {
     writeRows_(scoresSheet, [
-      ['score-p1-ja', 'part-1', 'judge-a', 'Juri A', 'DPW Wahdah Islamiyah Sulawesi Selatan', JSON.stringify({ 'ind-1': 94, 'ind-2': 91, 'ind-3': 90 }), 94, 91, 90, 91.95, 'Sinergi lintas 24 daerah sangat solid dan terukur dampaknya.', now],
-      ['score-p1-jb', 'part-1', 'judge-b', 'Juri B', 'DPW Wahdah Islamiyah Sulawesi Selatan', JSON.stringify({ 'ind-1': 92, 'ind-2': 93, 'ind-3': 92 }), 92, 93, 92, 92.35, 'Model wakaf produktif sudah mandiri secara arus kas.', now],
-      ['score-p1-jc', 'part-1', 'judge-c', 'Juri C', 'DPW Wahdah Islamiyah Sulawesi Selatan', JSON.stringify({ 'ind-1': 95, 'ind-2': 90, 'ind-3': 91 }), 95, 90, 91, 92.25, 'Dokumentasi SOP sangat siap direplikasi secara nasional.', now],
+      ['score-p1-ja', 'part-1', 'judge-a', 'Juri A', 'DPW Wahdah Islamiyah Sulawesi Selatan', JSON.stringify({ 'kol-1': 94, 'kol-2': 91, 'kol-3': 90 }), 94, 91, 90, 91.95, 'Sinergi lintas 24 daerah sangat solid dan terukur dampaknya.', now, 'KOLABORASI'],
+      ['score-p1-jb', 'part-1', 'judge-b', 'Juri B', 'DPW Wahdah Islamiyah Sulawesi Selatan', JSON.stringify({ 'kol-1': 92, 'kol-2': 93, 'kol-3': 92 }), 92, 93, 92, 92.35, 'Model wakaf kolaboratif sudah mandiri secara arus kas.', now, 'KOLABORASI'],
+      ['score-p1-jc', 'part-1', 'judge-c', 'Juri C', 'DPW Wahdah Islamiyah Sulawesi Selatan', JSON.stringify({ 'kol-1': 95, 'kol-2': 90, 'kol-3': 91 }), 95, 90, 91, 92.25, 'Dokumentasi MoU dan SOP sangat siap direplikasi secara nasional.', now, 'KOLABORASI'],
 
-      ['score-p2-ja', 'part-2', 'judge-a', 'Juri A', 'DPD Wahdah Islamiyah Kota Makassar', JSON.stringify({ 'ind-1': 92, 'ind-2': 84, 'ind-3': 86 }), 92, 84, 86, 87.7, 'Kolaborasi 42 masjid dan otoritas zakat kota sangat menonjol.', now],
-      ['score-p2-jb', 'part-2', 'judge-b', 'Juri B', 'DPD Wahdah Islamiyah Kota Makassar', JSON.stringify({ 'ind-1': 90, 'ind-2': 86, 'ind-3': 88 }), 90, 86, 88, 88.1, 'Digitalisasi ZISWAF mempermudah transparansi laporan.', now],
-      ['score-p2-jc', 'part-2', 'judge-c', 'Juri C', 'DPD Wahdah Islamiyah Kota Makassar', JSON.stringify({ 'ind-1': 94, 'ind-2': 82, 'ind-3': 86 }), 94, 82, 86, 87.8, 'Kemitraan eksternal kuat dan menjadi percontohan DPD.', now],
+      ['score-p2-ja', 'part-2', 'judge-a', 'Juri A', 'DPD Wahdah Islamiyah Kota Makassar', JSON.stringify({ 'kol-1': 92, 'kol-2': 84, 'kol-3': 86 }), 92, 84, 86, 87.7, 'Kolaborasi 42 masjid dan otoritas zakat kota sangat menonjol.', now, 'KOLABORASI'],
+      ['score-p2-jb', 'part-2', 'judge-b', 'Juri B', 'DPD Wahdah Islamiyah Kota Makassar', JSON.stringify({ 'kol-1': 90, 'kol-2': 86, 'kol-3': 88 }), 90, 86, 88, 88.1, 'Digitalisasi ZISWAF mempermudah transparansi laporan mitra.', now, 'KOLABORASI'],
+      ['score-p2-jc', 'part-2', 'judge-c', 'Juri C', 'DPD Wahdah Islamiyah Kota Makassar', JSON.stringify({ 'kol-1': 94, 'kol-2': 82, 'kol-3': 86 }), 94, 82, 86, 87.8, 'Kemitraan eksternal kuat dan menjadi percontohan DPD.', now, 'KOLABORASI'],
 
-      ['score-p3-ja', 'part-3', 'judge-a', 'Juri A', 'DPW Wahdah Islamiyah DKI Jakarta', JSON.stringify({ 'ind-1': 85, 'ind-2': 92, 'ind-3': 86 }), 85, 92, 86, 87.7, 'Inovasi digital sangat kreatif dengan jangkauan dakwah luas.', now],
-      ['score-p3-jb', 'part-3', 'judge-b', 'Juri B', 'DPW Wahdah Islamiyah DKI Jakarta', JSON.stringify({ 'ind-1': 87, 'ind-2': 90, 'ind-3': 87 }), 87, 90, 87, 88.05, 'Inkubator UMKM pemuda memberikan dampak ekonomi nyata.', now],
-      ['score-p3-jc', 'part-3', 'judge-c', 'Juri C', 'DPW Wahdah Islamiyah DKI Jakarta', JSON.stringify({ 'ind-1': 86, 'ind-2': 92, 'ind-3': 85 }), 86, 92, 85, 87.85, 'Perlu penguatan kolaborasi lintas lembaga pemerintah provinsi.', now],
+      ['score-p5-ja', 'part-5', 'judge-a', 'Juri A', 'DPW Wahdah Islamiyah Kalimantan Timur', JSON.stringify({ 'kol-1': 85, 'kol-2': 92, 'kol-3': 86 }), 85, 92, 86, 87.7, 'Dampak program beasiswa yatim sangat luas di wilayah penyangga IKN.', now, 'KOLABORASI'],
+      ['score-p5-jb', 'part-5', 'judge-b', 'Juri B', 'DPW Wahdah Islamiyah Kalimantan Timur', JSON.stringify({ 'kol-1': 87, 'kol-2': 90, 'kol-3': 87 }), 87, 90, 87, 88.05, 'Keterlibatan mitra korporasi dan sekolah sangat terukur.', now, 'KOLABORASI'],
+      ['score-p5-jc', 'part-5', 'judge-c', 'Juri C', 'DPW Wahdah Islamiyah Kalimantan Timur', JSON.stringify({ 'kol-1': 86, 'kol-2': 92, 'kol-3': 85 }), 86, 92, 85, 87.85, 'Perlu penguatan MoU lintas instansi pemerintah provinsi.', now, 'KOLABORASI'],
 
-      ['score-p4-ja', 'part-4', 'judge-a', 'Juri A', 'DPD Wahdah Islamiyah Kabupaten Gowa', JSON.stringify({ 'ind-1': 86, 'ind-2': 85, 'ind-3': 84 }), 86, 85, 84, 85.15, 'Sinergi pesantren dan kelompok tani lokal berjalan baik.', now],
-      ['score-p4-jb', 'part-4', 'judge-b', 'Juri B', 'DPD Wahdah Islamiyah Kabupaten Gowa', JSON.stringify({ 'ind-1': 85, 'ind-2': 84, 'ind-3': 86 }), 85, 84, 86, 84.9, 'Kemandirian pangan pesantren mulai terasa hasilnya.', now],
-      ['score-p4-jc', 'part-4', 'judge-c', 'Juri C', 'DPD Wahdah Islamiyah Kabupaten Gowa', JSON.stringify({ 'ind-1': 87, 'ind-2': 86, 'ind-3': 84 }), 87, 86, 84, 85.9, 'Cocok direplikasi oleh pesantren binaan di wilayah lain.', now],
+      ['score-p3-ja', 'part-3', 'judge-a', 'Juri A', 'DPW Wahdah Islamiyah DKI Jakarta', JSON.stringify({ 'ino-1': 91, 'ino-2': 90, 'ino-3': 89 }), 91, 90, 89, 90.2, 'Terobosan inkubator pemuda sangat orisinal dan berdaya saing.', now, 'INOVASI_MANDIRI'],
+      ['score-p3-jb', 'part-3', 'judge-b', 'Juri B', 'DPW Wahdah Islamiyah DKI Jakarta', JSON.stringify({ 'ino-1': 92, 'ino-2': 88, 'ino-3': 90 }), 92, 88, 90, 90.3, 'Pendanaan unit UMKM binaan telah berputar mandiri.', now, 'INOVASI_MANDIRI'],
+      ['score-p3-jc', 'part-3', 'judge-c', 'Juri C', 'DPW Wahdah Islamiyah DKI Jakarta', JSON.stringify({ 'ino-1': 90, 'ino-2': 91, 'ino-3': 88 }), 90, 91, 88, 89.8, 'Mudah diadaptasi DPW kota besar lainnya.', now, 'INOVASI_MANDIRI'],
 
-      ['score-p5-ja', 'part-5', 'judge-a', 'Juri A', 'DPW Wahdah Islamiyah Kalimantan Timur', JSON.stringify({ 'ind-1': 84, 'ind-2': 82, 'ind-3': 85 }), 84, 82, 85, 83.55, 'Program beasiswa yatim terstruktur rapi dengan mitra sekolah.', now],
-      ['score-p5-jb', 'part-5', 'judge-b', 'Juri B', 'DPW Wahdah Islamiyah Kalimantan Timur', JSON.stringify({ 'ind-1': 83, 'ind-2': 84, 'ind-3': 84 }), 83, 84, 84, 83.6, 'Dampak sosial di wilayah penyangga IKN cukup signifikan.', now],
+      ['score-p4-ja', 'part-4', 'judge-a', 'Juri A', 'DPD Wahdah Islamiyah Kabupaten Gowa', JSON.stringify({ 'ino-1': 86, 'ino-2': 85, 'ino-3': 84 }), 86, 85, 84, 85.2, 'Inovasi hidroponik pesantren memberikan kemandirian nyata.', now, 'INOVASI_MANDIRI'],
+      ['score-p4-jb', 'part-4', 'judge-b', 'Juri B', 'DPD Wahdah Islamiyah Kabupaten Gowa', JSON.stringify({ 'ino-1': 88, 'ino-2': 84, 'ino-3': 86 }), 88, 84, 86, 86.3, 'Produksi pangan pesantren mulai menopang biaya operasional santri.', now, 'INOVASI_MANDIRI'],
 
-      ['score-p6-ja', 'part-6', 'judge-a', 'Juri A', 'DPD Wahdah Islamiyah Kota Balikpapan', JSON.stringify({ 'ind-1': 82, 'ind-2': 80, 'ind-3': 82 }), 82, 80, 82, 81.3, 'Sistem logistik tanggap bencana sudah teruji di lapangan.', now],
+      ['score-p6-ja', 'part-6', 'judge-a', 'Juri A', 'DPD Wahdah Islamiyah Kota Balikpapan', JSON.stringify({ 'ino-1': 84, 'ino-2': 82, 'ino-3': 80 }), 84, 82, 80, 82.4, 'Aplikasi pelacakan logistik mandiri sudah teruji di lapangan.', now, 'INOVASI_MANDIRI'],
     ]);
   }
 
   // 7. Rekap_Peringkat
   ensureSheet_(ss, SHEET_NAMES.LEADERBOARD, [
     'Peringkat',
+    'Kategori Award',
     'Jenis',
     'Entitas',
     'Provinsi',
@@ -432,7 +598,9 @@ function setupSpreadsheet() {
     'Rata-rata Murni Juri',
     'Keterangan Tie-Breaker',
   ]);
-  syncLeaderboardSheet_(ss);
+
+  // Pastikan skema lama ter-upgrade otomatis jika sudah ada sheet sebelumnya
+  upgradeDuaKategori();
 }
 
 function ensureSheet_(ss, name, headers) {
@@ -498,6 +666,17 @@ function getSettingsMap_(ss) {
   return map;
 }
 
+function getIndicatorsForCategory_(indicators, category) {
+  var norm = normalizeAwardCategory_(category);
+  return indicators
+    .filter(function (ind) {
+      return normalizeAwardCategory_(ind.awardCategory) === norm;
+    })
+    .sort(function (a, b) {
+      return a.order - b.order;
+    });
+}
+
 function buildBootstrapData_(ss) {
   var entities = readRecords_(ss.getSheetByName(SHEET_NAMES.ENTITIES)).map(function (r) {
     return {
@@ -523,6 +702,7 @@ function buildBootstrapData_(ss) {
   var indicators = readRecords_(ss.getSheetByName(SHEET_NAMES.INDICATORS)).map(function (r) {
     return {
       id: String(r.id),
+      awardCategory: normalizeAwardCategory_(r.awardCategory),
       order: Number(r.order),
       name: String(r.name),
       description: String(r.description),
@@ -544,6 +724,7 @@ function buildBootstrapData_(ss) {
     }
     return {
       id: String(r.id),
+      awardCategory: normalizeAwardCategory_(r.awardCategory),
       entityId: String(r.entityId),
       entityType: String(r.entityType),
       entityName: String(r.entityName),
@@ -566,9 +747,9 @@ function buildBootstrapData_(ss) {
       parsedScores = JSON.parse(String(r.scoresJson || '{}'));
     } catch (err) {
       parsedScores = {
-        'ind-1': Number(r.ind_1_raw || 0),
-        'ind-2': Number(r.ind_2_raw || 0),
-        'ind-3': Number(r.ind_3_raw || 0),
+        'kol-1': Number(r.ind_1_raw || 0),
+        'kol-2': Number(r.ind_2_raw || 0),
+        'kol-3': Number(r.ind_3_raw || 0),
       };
     }
     return {
@@ -595,8 +776,8 @@ function buildBootstrapData_(ss) {
   };
 }
 
-function computeLeaderboard_(participants, judges, indicators, scores) {
-  var sortedIndicators = indicators.slice().sort(function (a, b) {
+function computeCategoryLeaderboard_(category, catParticipants, judges, catIndicators, scores) {
+  var sortedIndicators = catIndicators.slice().sort(function (a, b) {
     return a.order - b.order;
   });
   var highestIndicator =
@@ -604,7 +785,7 @@ function computeLeaderboard_(participants, judges, indicators, scores) {
       return b.weight - a.weight || a.order - b.order;
     })[0] || sortedIndicators[0];
 
-  var entries = participants.map(function (participant) {
+  var entries = catParticipants.map(function (participant) {
     var participantScores = scores.filter(function (s) {
       return s.participantId === participant.id;
     });
@@ -725,6 +906,7 @@ function computeLeaderboard_(participants, judges, indicators, scores) {
 
     return {
       rank: 0,
+      awardCategory: category,
       isTiedForRank: false,
       tieBreakerRule: 'NONE',
       tieBreakerNote: null,
@@ -849,19 +1031,43 @@ function computeLeaderboard_(participants, judges, indicators, scores) {
   return entries;
 }
 
+function computeLeaderboard_(participants, judges, indicators, scores) {
+  var categories = ['KOLABORASI', 'INOVASI_MANDIRI'];
+  var allEntries = [];
+  for (var c = 0; c < categories.length; c++) {
+    var cat = categories[c];
+    var catParticipants = participants.filter(function (p) {
+      return normalizeAwardCategory_(p.awardCategory) === cat;
+    });
+    var catIndicators = getIndicatorsForCategory_(indicators, cat);
+    var catEntries = computeCategoryLeaderboard_(
+      cat,
+      catParticipants,
+      judges,
+      catIndicators,
+      scores
+    );
+    for (var i = 0; i < catEntries.length; i++) {
+      allEntries.push(catEntries[i]);
+    }
+  }
+  return allEntries;
+}
+
 function syncLeaderboardSheet_(ss) {
   var sheet = ss.getSheetByName(SHEET_NAMES.LEADERBOARD);
   if (!sheet) return;
   var data = buildBootstrapData_(ss);
 
   if (sheet.getLastRow() > 1) {
-    sheet.getRange(2, 1, sheet.getLastRow() - 1, 12).clearContent();
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.max(13, sheet.getLastColumn())).clearContent();
   }
   if (data.leaderboard.length === 0) return;
 
   var rows = data.leaderboard.map(function (entry) {
     return [
       entry.rank,
+      getAwardCategoryLabel_(entry.awardCategory),
       entry.participant.entityType,
       entry.participant.entityName,
       entry.participant.province,
@@ -875,7 +1081,7 @@ function syncLeaderboardSheet_(ss) {
       entry.tieBreakerNote || '-',
     ];
   });
-  sheet.getRange(2, 1, rows.length, 12).setValues(rows);
+  sheet.getRange(2, 1, rows.length, 13).setValues(rows);
 }
 
 /**
@@ -959,6 +1165,7 @@ function doPost(e) {
       var entity = findById_(entities, body.entityId);
       if (!entity) return jsonOutput_({ error: 'Entitas DPW/DPD tidak valid.' });
 
+      var awardCat = normalizeAwardCategory_(body.awardCategory);
       var matList = body.materials && body.materials.length ? body.materials : null;
       var primaryMat = matList ? matList[0] : null;
       var matType = primaryMat ? String(primaryMat.type || 'Link') : String(body.materialType || 'Link');
@@ -972,7 +1179,7 @@ function doPost(e) {
       var pSheet = ensureSheet_(ss, SHEET_NAMES.PARTICIPANTS, [
         'id', 'entityId', 'entityType', 'entityName', 'province', 'innovationTitle',
         'materialType', 'materialUrl', 'driveFileId', 'uploadedFileName', 'uploadedFileSize',
-        'notes', 'submittedAt', 'updatedAt', 'materialsJson',
+        'notes', 'submittedAt', 'updatedAt', 'materialsJson', 'awardCategory',
       ]);
       pSheet.appendRow([
         newId,
@@ -990,6 +1197,7 @@ function doPost(e) {
         now,
         now,
         matList ? JSON.stringify(matList) : '',
+        awardCat,
       ]);
       syncLeaderboardSheet_(ss);
       return jsonOutput_({ bootstrap: buildBootstrapData_(ss) });
@@ -1000,10 +1208,11 @@ function doPost(e) {
       var entity2 = findById_(entities2, body.entityId);
       if (!entity2) return jsonOutput_({ error: 'Entitas DPW/DPD tidak valid.' });
 
+      var awardCat2 = normalizeAwardCategory_(body.awardCategory);
       var pSheet2 = ensureSheet_(ss, SHEET_NAMES.PARTICIPANTS, [
         'id', 'entityId', 'entityType', 'entityName', 'province', 'innovationTitle',
         'materialType', 'materialUrl', 'driveFileId', 'uploadedFileName', 'uploadedFileSize',
-        'notes', 'submittedAt', 'updatedAt', 'materialsJson',
+        'notes', 'submittedAt', 'updatedAt', 'materialsJson', 'awardCategory',
       ]);
       var matList2 = body.materials && body.materials.length ? body.materials : null;
       var primaryMat2 = matList2 ? matList2[0] : null;
@@ -1012,7 +1221,7 @@ function doPost(e) {
       for (var r = 1; r < rows2.length; r++) {
         if (String(rows2[r][0]) === String(body.id)) {
           var submittedAt = rows2[r][12] || new Date().toISOString();
-          pSheet2.getRange(r + 1, 1, 1, 15).setValues([
+          pSheet2.getRange(r + 1, 1, 1, 16).setValues([
             [
               String(body.id),
               String(entity2.id),
@@ -1029,6 +1238,7 @@ function doPost(e) {
               submittedAt,
               new Date().toISOString(),
               matList2 ? JSON.stringify(matList2) : String(rows2[r][14] || ''),
+              awardCat2,
             ],
           ]);
           updated = true;
@@ -1091,11 +1301,22 @@ function doPost(e) {
     }
 
     if (action === 'saveScores') {
-      var sSheet = ss.getSheetByName(SHEET_NAMES.SCORES);
+      var sSheet = ensureSheet_(ss, SHEET_NAMES.SCORES, [
+        'id', 'participantId', 'judgeId', 'judgeLabel', 'entityName', 'scoresJson',
+        'ind_1_raw', 'ind_2_raw', 'ind_3_raw', 'totalWeighted', 'notes', 'updatedAt', 'awardCategory',
+      ]);
       var allScores = sSheet.getDataRange().getValues();
       var participants = readRecords_(ss.getSheetByName(SHEET_NAMES.PARTICIPANTS));
       var judgesList = readRecords_(ss.getSheetByName(SHEET_NAMES.JUDGES));
-      var indicatorsList = readRecords_(ss.getSheetByName(SHEET_NAMES.INDICATORS));
+      var indicatorsList = readRecords_(ss.getSheetByName(SHEET_NAMES.INDICATORS)).map(function (r) {
+        return {
+          id: String(r.id),
+          awardCategory: normalizeAwardCategory_(r.awardCategory),
+          order: Number(r.order),
+          name: String(r.name),
+          weight: Number(r.weight),
+        };
+      });
 
       var partObj = findById_(participants, body.participantId);
       var judgeObj = findById_(judgesList, body.judgeId);
@@ -1103,15 +1324,21 @@ function doPost(e) {
         return jsonOutput_({ error: 'Peserta atau Juri tidak ditemukan di spreadsheet.' });
       }
 
+      var partCategory = normalizeAwardCategory_(partObj.awardCategory);
+      var catIndicators = getIndicatorsForCategory_(indicatorsList, partCategory);
       var rawScores = body.scores || {};
       var totalWeighted = 0;
-      for (var ii = 0; ii < indicatorsList.length; ii++) {
-        var indDef = indicatorsList[ii];
+      for (var ii = 0; ii < catIndicators.length; ii++) {
+        var indDef = catIndicators[ii];
         totalWeighted +=
           Math.max(0, Math.min(100, Number(rawScores[indDef.id] || 0))) *
           (Number(indDef.weight) / 100);
       }
       totalWeighted = roundToTwo_(totalWeighted);
+
+      var raw1 = catIndicators[0] ? Number(rawScores[catIndicators[0].id] || 0) : 0;
+      var raw2 = catIndicators[1] ? Number(rawScores[catIndicators[1].id] || 0) : 0;
+      var raw3 = catIndicators[2] ? Number(rawScores[catIndicators[2].id] || 0) : 0;
 
       var nowScore = new Date().toISOString();
       var rowPayload = [
@@ -1121,12 +1348,13 @@ function doPost(e) {
         String(judgeObj.label),
         String(partObj.entityName),
         JSON.stringify(rawScores),
-        Number(rawScores['ind-1'] || 0),
-        Number(rawScores['ind-2'] || 0),
-        Number(rawScores['ind-3'] || 0),
+        raw1,
+        raw2,
+        raw3,
         totalWeighted,
         String(body.notes || '').trim(),
         nowScore,
+        partCategory,
       ];
 
       var foundRow = -1;
@@ -1142,7 +1370,7 @@ function doPost(e) {
 
       if (foundRow > 0) {
         rowPayload[0] = String(allScores[foundRow - 1][0]);
-        sSheet.getRange(foundRow, 1, 1, 12).setValues([rowPayload]);
+        sSheet.getRange(foundRow, 1, 1, 13).setValues([rowPayload]);
       } else {
         sSheet.appendRow(rowPayload);
       }

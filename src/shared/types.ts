@@ -1,5 +1,27 @@
 export type EntityType = 'DPW' | 'DPD';
 
+export type AwardCategory = 'KOLABORASI' | 'INOVASI_MANDIRI';
+
+export const AWARD_CATEGORY_LIST: Array<{
+  id: AwardCategory;
+  label: string;
+  shortLabel: string;
+  description: string;
+}> = [
+  {
+    id: 'KOLABORASI',
+    label: 'Award Kolaborasi',
+    shortLabel: 'Kolaborasi',
+    description: 'Penilaian sinergi program strategis lintas lembaga, pemerintah daerah, dan amal usaha.',
+  },
+  {
+    id: 'INOVASI_MANDIRI',
+    label: 'Award Inovasi Mandiri',
+    shortLabel: 'Inovasi Mandiri',
+    description: 'Penilaian terobosan orisinal, kemandirian operasional/pendanaan, dan efektivitas implementasi.',
+  },
+];
+
 export type MaterialType = 'Link' | 'Video' | 'PDF/PPT';
 
 export interface MasterEntity {
@@ -21,6 +43,7 @@ export interface MasterJudge {
 
 export interface MasterIndicator {
   id: string;
+  awardCategory: AwardCategory;
   order: number;
   name: string;
   description: string;
@@ -39,6 +62,7 @@ export interface MaterialItem {
 
 export interface ParticipantSubmission {
   id: string;
+  awardCategory: AwardCategory;
   entityId: string;
   entityType: EntityType;
   entityName: string;
@@ -83,6 +107,7 @@ export type TieBreakerResolution =
 
 export interface LeaderboardEntry {
   rank: number;
+  awardCategory: AwardCategory;
   isTiedForRank: boolean;
   tieBreakerRule: TieBreakerResolution;
   tieBreakerNote: string | null;
