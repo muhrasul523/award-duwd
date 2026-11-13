@@ -100,4 +100,5 @@ export interface AwardDatabase {
 
 export interface BootstrapResponse extends AwardDatabase {
   leaderboard: LeaderboardEntry[];
+  driveFolderConfigured?: boolean;
 }

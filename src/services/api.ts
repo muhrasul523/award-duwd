@@ -146,6 +146,21 @@ export async function testAppsScriptConnection(url: string): Promise<BootstrapRe
   return callAppsScriptGet<BootstrapResponse>(clean, 'bootstrap');
 }
 
+export async function apiSetupSpreadsheet(url: string): Promise<BootstrapResponse> {
+  const clean = url.trim();
+  if (!clean || !clean.startsWith('https://script.google.com/')) {
+    throw new Error(
+      'URL harus berupa Web App Google Apps Script (dimulai dengan https://script.google.com/...).'
+    );
+  }
+  const res = await callAppsScriptPost<{ bootstrap: BootstrapResponse }>(
+    clean,
+    'setupSpreadsheet',
+    {}
+  );
+  return res.bootstrap;
+}
+
 async function tryJsonFetch<T>(
   input: RequestInfo | URL,
   init?: RequestInit

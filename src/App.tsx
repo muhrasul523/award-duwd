@@ -384,14 +384,32 @@ export default function App() {
             </button>
           </div>
         ) : (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-            >
+          <div className="space-y-5">
+            {usingGas && data.entities.length === 0 && (
+              <div className="glass-panel rounded-2xl p-4 sm:p-5 border-[#D88B15]/40 bg-[#D88B15]/[0.07] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="text-xs text-[#6E4505] leading-relaxed">
+                  <span className="font-bold block text-sm text-[#07525E]">
+                    Spreadsheet Terhubung, Namun 7 Sheet Belum Diinisialisasi
+                  </span>
+                  Web App Apps Script Anda sudah aktif, tetapi sheet master dan data awal belum dibuat. Klik tombol di kanan untuk menginisialisasi 7 sheet otomatis.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAppsScriptModal(true)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-white bg-[#D88B15] hover:brightness-105 transition whitespace-nowrap shrink-0"
+                >
+                  Inisialisasi 7 Sheet
+                </button>
+              </div>
+            )}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+              >
               {activeTab === 'admin' && (
                 <AdminTab
                   entities={data.entities}
@@ -423,8 +441,9 @@ export default function App() {
                   onPreviewMaterial={(p) => setPreviewParticipant(p)}
                 />
               )}
-            </motion.div>
-          </AnimatePresence>
+              </motion.div>
+            </AnimatePresence>
+          </div>
         )}
       </main>
 

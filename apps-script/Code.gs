@@ -32,7 +32,13 @@ var SHEET_NAMES = {
 };
 
 function getSpreadsheet_() {
-  return SpreadsheetApp.getActiveSpreadsheet();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    throw new Error(
+      'Spreadsheet aktif tidak ditemukan. Pastikan Apps Script dibuka dari menu Extensions > Apps Script di dalam Google Spreadsheet.'
+    );
+  }
+  return ss;
 }
 
 function jsonOutput_(obj) {
@@ -50,11 +56,21 @@ function normalizeWhatsApp_(input) {
 }
 
 function roundToTwo_(num) {
-  return Math.round((Number(num) + Number.EPSILON) * 100) / 100;
+  return Math.round((Number(num) + 1e-12) * 100) / 100;
 }
 
 function roundToFour_(num) {
-  return Math.round((Number(num) + Number.EPSILON) * 10000) / 10000;
+  return Math.round((Number(num) + 1e-12) * 10000) / 10000;
+}
+
+function findById_(list, idValue) {
+  var target = String(idValue || '');
+  for (var i = 0; i < list.length; i++) {
+    if (String(list[i].id) === target) {
+      return list[i];
+    }
+  }
+  return null;
 }
 
 function extractDriveFolderId_(urlOrId) {
@@ -146,8 +162,8 @@ function setupSpreadsheet() {
     'title',
     'whatsapp',
   ]);
-  judgesSheet.getRange('F:F').setNumberFormat('@');
   if (judgesSheet.getLastRow() <= 1) {
+    judgesSheet.getRange(2, 6, 50, 1).setNumberFormat('@');
     writeRows_(judgesSheet, [
       [
         'judge-a',
@@ -393,12 +409,17 @@ function ensureSheet_(ss, name, headers) {
   }
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(headers);
+    SpreadsheetApp.flush();
     var headerRange = sheet.getRange(1, 1, 1, headers.length);
     headerRange
       .setBackground('#07525E')
       .setFontColor('#FFFFFF')
       .setFontWeight('bold');
-    sheet.setFrozenRows(1);
+    try {
+      sheet.setFrozenRows(1);
+    } catch (freezeErr) {
+      // Abaikan jika ukuran baris belum siap dibekukan
+    }
   }
   return sheet;
 }
@@ -408,6 +429,7 @@ function writeRows_(sheet, rows) {
   sheet
     .getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length)
     .setValues(rows);
+  SpreadsheetApp.flush();
 }
 
 function readRecords_(sheet) {
@@ -714,12 +736,16 @@ function computeLeaderboard_(participants, judges, indicators, scores) {
       return e.participant.id !== item.participant.id && e.finalScore === item.finalScore;
     });
     if (samePeers.length > 0) {
-      var higherPeer = samePeers.find(function (p) {
-        return p.rank < item.rank;
-      });
-      var lowerPeer = samePeers.find(function (p) {
-        return p.rank > item.rank;
-      });
+      var higherPeer = null;
+      var lowerPeer = null;
+      for (var sp = 0; sp < samePeers.length; sp++) {
+        if (!higherPeer && samePeers[sp].rank < item.rank) {
+          higherPeer = samePeers[sp];
+        }
+        if (!lowerPeer && samePeers[sp].rank > item.rank) {
+          lowerPeer = samePeers[sp];
+        }
+      }
       if (lowerPeer) {
         if (item.highestIndicatorWeightedScore > lowerPeer.highestIndicatorWeightedScore) {
           item.tieBreakerRule = 'HIGHEST_WEIGHT_INDICATOR';
@@ -807,6 +833,20 @@ function doGet(e) {
   try {
     var ss = getSpreadsheet_();
     var action = (e && e.parameter && e.parameter.action) || 'bootstrap';
+    if (action === 'setupSpreadsheet') {
+      var lock = LockService.getScriptLock();
+      lock.waitLock(15000);
+      try {
+        setupSpreadsheet();
+        return jsonOutput_({
+          ok: true,
+          message: '7 sheet Spreadsheet berhasil diinisialisasi.',
+          bootstrap: buildBootstrapData_(ss),
+        });
+      } finally {
+        lock.releaseLock();
+      }
+    }
     if (action === 'bootstrap') {
       return jsonOutput_(buildBootstrapData_(ss));
     }
@@ -826,6 +866,14 @@ function doPost(e) {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     var action = body.action;
     var ss = getSpreadsheet_();
+
+    if (action === 'setupSpreadsheet') {
+      setupSpreadsheet();
+      return jsonOutput_({
+        ok: true,
+        bootstrap: buildBootstrapData_(ss),
+      });
+    }
 
     if (action === 'uploadFile') {
       var settings = getSettingsMap_(ss);
@@ -856,9 +904,7 @@ function doPost(e) {
 
     if (action === 'createParticipant') {
       var entities = readRecords_(ss.getSheetByName(SHEET_NAMES.ENTITIES));
-      var entity = entities.find(function (item) {
-        return String(item.id) === String(body.entityId);
-      });
+      var entity = findById_(entities, body.entityId);
       if (!entity) return jsonOutput_({ error: 'Entitas DPW/DPD tidak valid.' });
 
       var now = new Date().toISOString();
@@ -886,9 +932,7 @@ function doPost(e) {
 
     if (action === 'updateParticipant') {
       var entities2 = readRecords_(ss.getSheetByName(SHEET_NAMES.ENTITIES));
-      var entity2 = entities2.find(function (item) {
-        return String(item.id) === String(body.entityId);
-      });
+      var entity2 = findById_(entities2, body.entityId);
       if (!entity2) return jsonOutput_({ error: 'Entitas DPW/DPD tidak valid.' });
 
       var pSheet2 = ss.getSheetByName(SHEET_NAMES.PARTICIPANTS);
@@ -980,12 +1024,8 @@ function doPost(e) {
       var judgesList = readRecords_(ss.getSheetByName(SHEET_NAMES.JUDGES));
       var indicatorsList = readRecords_(ss.getSheetByName(SHEET_NAMES.INDICATORS));
 
-      var partObj = participants.find(function (p) {
-        return String(p.id) === String(body.participantId);
-      });
-      var judgeObj = judgesList.find(function (jg) {
-        return String(jg.id) === String(body.judgeId);
-      });
+      var partObj = findById_(participants, body.participantId);
+      var judgeObj = findById_(judgesList, body.judgeId);
       if (!partObj || !judgeObj) {
         return jsonOutput_({ error: 'Peserta atau Juri tidak ditemukan di spreadsheet.' });
       }

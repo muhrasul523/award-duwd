@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  AlertTriangle,
   Check,
   CheckCircle2,
   Copy,
@@ -7,10 +8,12 @@ import {
   FileSpreadsheet,
   FolderOpen,
   Link2,
+  Sparkles,
   X,
 } from 'lucide-react';
 import gasCodeRaw from '../../apps-script/Code.gs?raw';
 import {
+  apiSetupSpreadsheet,
   getAppsScriptUrl,
   getEnvAppsScriptUrl,
   setAppsScriptUrl,
@@ -31,9 +34,11 @@ export function AppsScriptModal({
 }: AppsScriptModalProps) {
   const [urlInput, setUrlInput] = useState('');
   const [isTesting, setIsTesting] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [needsSheetSetup, setNeedsSheetSetup] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [feedback, setFeedback] = useState<{
-    type: 'success' | 'error';
+    type: 'success' | 'warning' | 'error';
     message: string;
   } | null>(null);
 
@@ -42,6 +47,7 @@ export function AppsScriptModal({
       setUrlInput(getAppsScriptUrl());
       setFeedback(null);
       setCopiedCode(false);
+      setNeedsSheetSetup(false);
     }
   }, [isOpen]);
 
@@ -61,6 +67,7 @@ export function AppsScriptModal({
   const handleTestAndSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setFeedback(null);
+    setNeedsSheetSetup(false);
 
     const clean = urlInput.trim();
     if (!clean) {
@@ -77,10 +84,24 @@ export function AppsScriptModal({
       const bootstrap = await testAppsScriptConnection(clean);
       setAppsScriptUrl(clean);
       onConnected(bootstrap);
-      setFeedback({
-        type: 'success',
-        message: `Terhubung ke Google Spreadsheet (${bootstrap.participants.length} peserta, ${bootstrap.judges.length} juri).`,
-      });
+
+      if (bootstrap.entities.length === 0 && bootstrap.indicators.length === 0) {
+        setNeedsSheetSetup(true);
+        setFeedback({
+          type: 'warning',
+          message:
+            'Web App merespons dengan baik, namun 7 sheet Spreadsheet belum dibuat (masih 0 data). Klik "Inisialisasi 7 Sheet Otomatis" di bawah untuk membuat seluruh sheet dan data awal sekarang.',
+        });
+      } else {
+        setFeedback({
+          type: 'success',
+          message: `Terhubung ke Google Spreadsheet (${bootstrap.participants.length} peserta, ${bootstrap.judges.length} juri${
+            bootstrap.driveFolderConfigured
+              ? ', Folder Drive siap'
+              : ', namun DRIVE_FOLDER_URL di sheet Pengaturan belum diisi'
+          }).`,
+        });
+      }
     } catch (err) {
       setFeedback({
         type: 'error',
@@ -88,6 +109,33 @@ export function AppsScriptModal({
       });
     } finally {
       setIsTesting(false);
+    }
+  };
+
+  const handleInitializeSheets = async () => {
+    const clean = urlInput.trim();
+    if (!clean) return;
+    setIsInitializing(true);
+    setFeedback(null);
+    try {
+      const bootstrap = await apiSetupSpreadsheet(clean);
+      setAppsScriptUrl(clean);
+      onConnected(bootstrap);
+      setNeedsSheetSetup(false);
+      setFeedback({
+        type: 'success',
+        message: `7 Sheet Spreadsheet berhasil dibuat! (${bootstrap.entities.length} entitas, ${bootstrap.judges.length} juri, ${bootstrap.participants.length} peserta). Jangan lupa isi DRIVE_FOLDER_URL di sheet Pengaturan.`,
+      });
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        message:
+          err instanceof Error
+            ? `${err.message} (Pastikan kode Code.gs terbaru sudah disimpan dan di-Deploy versi baru.)`
+            : 'Gagal menginisialisasi 7 sheet Spreadsheet.',
+      });
+    } finally {
+      setIsInitializing(false);
     }
   };
 
@@ -164,7 +212,7 @@ export function AppsScriptModal({
               </div>
               <button
                 type="submit"
-                disabled={isTesting}
+                disabled={isTesting || isInitializing}
                 className="px-5 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-[#0C7A89] to-[#07525E] hover:brightness-110 disabled:opacity-60 transition whitespace-nowrap shrink-0"
               >
                 {isTesting ? 'Menguji Koneksi...' : 'Uji & Simpan Koneksi'}
@@ -178,16 +226,40 @@ export function AppsScriptModal({
             {feedback && (
               <div
                 role="status"
-                className={`rounded-xl px-4 py-3 text-xs font-medium flex items-start gap-2 ${
+                className={`rounded-xl px-4 py-3 text-xs font-medium space-y-2.5 ${
                   feedback.type === 'success'
                     ? 'bg-[#0C7A89]/10 text-[#07525E] border border-[#0C7A89]/25'
+                    : feedback.type === 'warning'
+                    ? 'bg-[#D88B15]/10 text-[#8A5608] border border-[#D88B15]/30'
                     : 'bg-red-50 text-red-700 border border-red-200'
                 }`}
               >
-                {feedback.type === 'success' && (
-                  <CheckCircle2 className="w-4 h-4 text-[#0C7A89] shrink-0 mt-0.5" />
+                <div className="flex items-start gap-2">
+                  {feedback.type === 'success' && (
+                    <CheckCircle2 className="w-4 h-4 text-[#0C7A89] shrink-0 mt-0.5" />
+                  )}
+                  {feedback.type === 'warning' && (
+                    <AlertTriangle className="w-4 h-4 text-[#D88B15] shrink-0 mt-0.5" />
+                  )}
+                  <span>{feedback.message}</span>
+                </div>
+                {needsSheetSetup && (
+                  <div>
+                    <button
+                      type="button"
+                      disabled={isInitializing}
+                      onClick={() => void handleInitializeSheets()}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-[#D88B15] hover:brightness-105 disabled:opacity-60 transition"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>
+                        {isInitializing
+                          ? 'Membuat 7 Sheet...'
+                          : 'Inisialisasi 7 Sheet Otomatis Sekarang'}
+                      </span>
+                    </button>
+                  </div>
                 )}
-                <span>{feedback.message}</span>
               </div>
             )}
           </form>
