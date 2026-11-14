@@ -32,6 +32,7 @@ import type {
   MasterJudge,
   ParticipantSubmission,
 } from '../shared/types';
+import { SaveSuccessModal, type SaveSuccessPayload } from './SaveSuccessModal';
 
 interface JudgePortalTabProps {
   indicators: MasterIndicator[];
@@ -74,6 +75,8 @@ export function JudgePortalTab({
     type: 'success' | 'error';
     message: string;
   } | null>(null);
+  const [successPopup, setSuccessPopup] = useState<SaveSuccessPayload | null>(null);
+  const [nextUnscoredId, setNextUnscoredId] = useState<string | null>(null);
 
   const scoringSectionRef = useRef<HTMLElement | null>(null);
 
@@ -209,9 +212,46 @@ export function JudgePortalTab({
       });
       onDataUpdated(nextBootstrap);
       const catLabel = getAwardCategoryLabel(selectedParticipant.awardCategory);
+
+      // Find next unscored participant for quick transition
+      const updatedScoredIds = new Set(
+        nextBootstrap.scores
+          .filter((s) => s.judgeId === activeJudge.id)
+          .map((s) => s.participantId)
+      );
+      const nextCandidate = nextBootstrap.participants.find(
+        (p) => p.id !== selectedParticipant.id && !updatedScoredIds.has(p.id)
+      );
+      setNextUnscoredId(nextCandidate ? nextCandidate.id : null);
+
       setSaveFeedback({
         type: 'success',
         message: `Penilaian (${catLabel}) untuk ${selectedParticipant.entityName} berhasil disimpan (Total Terbobot: ${liveTotalWeighted.toFixed(2)}).`,
+      });
+      setSuccessPopup({
+        variant: 'score',
+        title: 'Penilaian Juri Berhasil Disimpan!',
+        subtitle:
+          'Nilai murni dan konversi terbobot telah tersimpan ke sistem dan langsung memperbarui rekapitulasi peringkat.',
+        highlightLabel: `Total Terbobot (${activeJudge.label})`,
+        highlightValue: `${liveTotalWeighted.toFixed(2)} / 100`,
+        details: [
+          { label: 'Dewan Juri', value: activeJudge.name },
+          { label: 'Kategori Award', value: catLabel },
+          { label: 'Entitas Peserta', value: selectedParticipant.entityName },
+          ...activeIndicators.map((ind) => ({
+            label: `Indikator ${ind.order} (${ind.weight}%)`,
+            value: `${Number(draftScores[ind.id] ?? 0).toFixed(1)} → ${computeWeightedScore(
+              draftScores[ind.id] ?? 0,
+              ind.weight
+            ).toFixed(2)}`,
+          })),
+        ],
+        savedAt: new Date().toLocaleString('id-ID', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        }),
+        nextActionLabel: nextCandidate ? 'Nilai Peserta Berikutnya' : undefined,
       });
     } catch (err) {
       setSaveFeedback({
@@ -312,6 +352,9 @@ export function JudgePortalTab({
 
   // Authenticated Workspace View
   const scoredByActiveCount = participants.filter((p) => judgeScoreMap.has(p.id)).length;
+  const existingScoreRecord = selectedParticipant
+    ? judgeScoreMap.get(selectedParticipant.id)
+    : undefined;
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -586,6 +629,17 @@ export function JudgePortalTab({
                     ))}
                   </div>
                 )}
+                {existingScoreRecord && (
+                  <div className="rounded-xl bg-emerald-50/90 border border-emerald-200 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="inline-flex items-center gap-1.5 font-bold text-emerald-800">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Status: Penilaian Anda untuk peserta ini sudah tersimpan</span>
+                    </span>
+                    <span className="text-[11px] font-medium text-emerald-700">
+                      Anda tetap dapat memperbarui nilai dan menekan Simpan Penilaian
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Indicators Scoring Form (Dynamic per Award Category) */}
@@ -696,13 +750,16 @@ export function JudgePortalTab({
               {saveFeedback && (
                 <div
                   role="status"
-                  className={`rounded-xl px-4 py-3 text-xs font-medium break-words ${
+                  className={`rounded-2xl px-4 py-3.5 text-xs font-semibold break-words flex items-start gap-2.5 shadow-xs ${
                     saveFeedback.type === 'success'
-                      ? 'bg-[#0C7A89]/10 text-[#07525E] border border-[#0C7A89]/25'
+                      ? 'bg-emerald-50 text-emerald-900 border border-emerald-300'
                       : 'bg-red-50 text-red-700 border border-red-200'
                   }`}
                 >
-                  {saveFeedback.message}
+                  {saveFeedback.type === 'success' && (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  )}
+                  <span>{saveFeedback.message}</span>
                 </div>
               )}
 
@@ -738,6 +795,19 @@ export function JudgePortalTab({
           )}
         </section>
       </div>
+      {/* Save Success Pop-up */}
+      <SaveSuccessModal
+        payload={successPopup}
+        onClose={() => setSuccessPopup(null)}
+        onNextAction={
+          nextUnscoredId
+            ? () => {
+                setSuccessPopup(null);
+                handleSelectParticipant(nextUnscoredId);
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }

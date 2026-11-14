@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import {
+  CheckCircle2,
   Edit3,
   ExternalLink,
   Eye,
@@ -37,6 +38,7 @@ import type {
   ParticipantSubmission,
 } from '../shared/types';
 import { EntityCombobox } from './EntityCombobox';
+import { SaveSuccessModal, type SaveSuccessPayload } from './SaveSuccessModal';
 
 interface AdminTabProps {
   entities: MasterEntity[];
@@ -71,6 +73,7 @@ export function AdminTab({
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
     null
   );
+  const [successPopup, setSuccessPopup] = useState<SaveSuccessPayload | null>(null);
 
   // List filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -293,17 +296,40 @@ export function AdminTab({
         notes: notes.trim(),
       };
 
+      const savedEntityName =
+        entities.find((ent) => ent.id === entityId)?.name || 'Entitas DPW/DPD';
+      const savedTitle = innovationTitle.trim();
+      const wasEditing = Boolean(editingId);
       const nextBootstrap = editingId
         ? await apiUpdateParticipant(editingId, payload)
         : await apiCreateParticipant(payload);
 
       onDataUpdated(nextBootstrap);
-      const actionLabel = editingId ? 'diperbarui' : 'ditambahkan';
+      const actionLabel = wasEditing ? 'diperbarui' : 'ditambahkan';
       const catName = getAwardCategoryLabel(awardCategory);
       resetForm(awardCategory, entityType);
+      const successMsg = `Bahan Award ${catName} untuk ${savedEntityName} (${finalMaterials.length} bahan) berhasil ${actionLabel}.`;
       setFeedback({
         type: 'success',
-        message: `Bahan Award ${catName} (${finalMaterials.length} bahan) berhasil ${actionLabel}.`,
+        message: successMsg,
+      });
+      setSuccessPopup({
+        variant: 'participant',
+        title: wasEditing ? 'Perubahan Bahan Berhasil Disimpan!' : 'Bahan Peserta Berhasil Disimpan!',
+        subtitle:
+          'Data karya inovasi beserta tautan/berkas lampiran telah tercatat pada sistem dan langsung tersedia di Portal Penilaian Dewan Juri.',
+        highlightLabel: 'Kategori Award',
+        highlightValue: catName,
+        details: [
+          { label: 'Entitas', value: savedEntityName },
+          { label: 'Judul Karya', value: savedTitle },
+          { label: 'Lampiran', value: `${finalMaterials.length} bahan presentasi` },
+          { label: 'Status Data', value: wasEditing ? 'Diperbarui' : 'Baru Didaftarkan' },
+        ],
+        savedAt: new Date().toLocaleString('id-ID', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        }),
       });
     } catch (err) {
       setFeedback({
@@ -625,13 +651,16 @@ export function AdminTab({
           {feedback && (
             <div
               role="status"
-              className={`rounded-xl px-4 py-3 text-xs font-medium break-words ${
+              className={`rounded-2xl px-4 py-3.5 text-xs font-semibold break-words flex items-start gap-2.5 shadow-xs ${
                 feedback.type === 'success'
-                  ? 'bg-[#0C7A89]/10 text-[#07525E] border border-[#0C7A89]/25'
+                  ? 'bg-emerald-50 text-emerald-900 border border-emerald-300'
                   : 'bg-red-50 text-red-700 border border-red-200'
               }`}
             >
-              {feedback.message}
+              {feedback.type === 'success' && (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              )}
+              <span>{feedback.message}</span>
             </div>
           )}
 
@@ -856,6 +885,11 @@ export function AdminTab({
           </div>
         </div>
       )}
+      {/* Save Success Pop-up */}
+      <SaveSuccessModal
+        payload={successPopup}
+        onClose={() => setSuccessPopup(null)}
+      />
     </div>
   );
 }
